@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const Store = require('electron-store');
@@ -59,6 +59,62 @@ function createWindow() {
 
   win.on('closed', () => {
     win = null;
+  });
+
+  // Right-click menus: spelling fixes on misspellings; cut/copy + formatting
+  // on an editor selection; paste + Insert without one; copy/link actions in
+  // the preview.
+  win.webContents.on('context-menu', (_e, p) => {
+    const template = [];
+
+    if (p.misspelledWord) {
+      for (const s of p.dictionarySuggestions.slice(0, 5)) {
+        template.push({ label: s, click: () => win.webContents.replaceMisspelling(s) });
+      }
+      if (p.dictionarySuggestions.length === 0) {
+        template.push({ label: 'No suggestions', enabled: false });
+      }
+      template.push({
+        label: `Add "${p.misspelledWord}" to Dictionary`,
+        click: () => win.webContents.session.addWordToSpellCheckerDictionary(p.misspelledWord),
+      });
+      template.push({ type: 'separator' });
+    }
+
+    if (p.linkURL) {
+      template.push(
+        { label: 'Open Link in Browser', click: () => shell.openExternal(p.linkURL) },
+        { label: 'Copy Link Address', click: () => clipboard.writeText(p.linkURL) },
+        { type: 'separator' },
+      );
+    }
+
+    if (p.isEditable) {
+      const hasSelection = p.selectionText.trim().length > 0;
+      if (hasSelection) {
+        template.push(
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { type: 'separator' },
+          { label: 'Bold', accelerator: 'CmdOrCtrl+B', click: () => sendMenu('insert:bold') },
+          { label: 'Italic', accelerator: 'CmdOrCtrl+I', click: () => sendMenu('insert:italic') },
+          { label: 'Link', accelerator: 'CmdOrCtrl+K', click: () => sendMenu('insert:link') },
+        );
+      } else {
+        template.push(
+          { role: 'paste' },
+          { role: 'selectAll' },
+          { type: 'separator' },
+          { label: 'Insert', submenu: insertMenuTemplate() },
+        );
+      }
+    } else if (p.selectionText.trim()) {
+      template.push({ role: 'copy' });
+    }
+
+    while (template.length && template[template.length - 1].type === 'separator') template.pop();
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
   });
 }
 
