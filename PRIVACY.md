@@ -41,6 +41,4 @@ Legilo itself makes no network requests. Two user-initiated exceptions:
 If a future version of Legilo ever changes any of the above, this policy will
 be updated before that version is released.
 
-## Contact
 
-Questions about this policy: **friso.vosdewael@gmail.com**
