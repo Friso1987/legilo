@@ -1,9 +1,8 @@
 # Legilo
 
-A split-view Markdown reader/editor for Windows. Editor on the left 
-(CodeMirror 6 with Markdown syntax highlighting), live GitHub-flavored
-preview on the right (markdown-it + highlight.js), with synchronized scrolling
-and a draggable divider.
+A split-view Markdown reader/editor. Editor on the left (CodeMirror 6 with Markdown 
+syntax highlighting), live GitHub-flavoredpreview on the right (markdown-it + highlight.js),
+with synchronized scrolling and a draggable divider.
 
 *Legilo* is Esperanto for "reading device".
 
