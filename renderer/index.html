@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: http: https:;" />
+  <title>Legilo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="theme-light mode-split">
+  <div id="toolbar">
+    <div class="toolbar-left" id="tabbar">
+      <div id="tabs"></div>
+      <button id="tab-add" title="New tab (Ctrl+N)">+</button>
+    </div>
+    <div class="toolbar-right">
+      <button id="btn-insert" title="Insert markdown: headings, images, tables, code…">Insert ▾</button>
+      <button id="btn-page" title="Toggle Word-like page view in the preview (Ctrl+Shift+P)">
+        <span class="page-label">Page</span>
+      </button>
+      <button id="btn-present" title="Presenter mode (F5) — slides split on ---">Present</button>
+      <button id="btn-view" title="Cycle view: split / editor / preview (Ctrl+1/2/3)">
+        <span class="view-label">Split</span>
+      </button>
+      <button id="btn-theme" title="Toggle dark theme (Ctrl+Shift+D)">
+        <span class="theme-label">Dark</span>
+      </button>
+      <button id="btn-help" title="Markdown Guide — syntax examples and shortcuts">?</button>
+    </div>
+  </div>
+
+  <div id="workspace">
+    <div id="editor-pane"></div>
+    <div id="divider" title="Drag to resize"></div>
+    <div id="preview-pane">
+      <article id="preview" class="markdown-body"></article>
+    </div>
+  </div>
+
+  <div id="presenter" hidden>
+    <div id="slide-stage">
+      <article id="slide" class="markdown-body"></article>
+    </div>
+    <div id="presenter-hud">
+      <button id="slide-prev" title="Previous (←)">‹</button>
+      <span id="slide-counter">1 / 1</span>
+      <button id="slide-next" title="Next (→)">›</button>
+      <button id="presenter-exit" title="Exit (Esc)">✕</button>
+    </div>
+  </div>
+
+  <article id="print-root" class="markdown-body"></article>
+
+  <script src="bundle.js"></script>
+</body>
+</html>

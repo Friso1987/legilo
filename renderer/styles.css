@@ -1,0 +1,567 @@
+/* ==========================================================================
+   Legilo — app chrome
+   ========================================================================== */
+
+* { box-sizing: border-box; }
+
+:root {
+  --toolbar-h: 40px;
+  --chrome-bg: #f6f8fa;
+  --chrome-fg: #1f2328;
+  --chrome-border: #d1d9e0;
+  --accent: #0969da;
+  --divider: #d1d9e0;
+  --divider-hover: #0969da;
+  --pane-bg: #ffffff;
+  --btn-bg: #ffffff;
+  --btn-border: #d1d9e0;
+  --btn-hover: #eaeef2;
+}
+
+body.theme-dark {
+  --chrome-bg: #14171b;
+  --chrome-fg: #e6edf3;
+  --chrome-border: #30363d;
+  --accent: #4493f8;
+  --divider: #30363d;
+  --divider-hover: #4493f8;
+  --pane-bg: #1e2227;
+  --btn-bg: #21262d;
+  --btn-border: #30363d;
+  --btn-hover: #30363d;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--pane-bg);
+  color: var(--chrome-fg);
+}
+
+/* ---- toolbar ---- */
+
+#toolbar {
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--chrome-border);
+  user-select: none;
+}
+
+/* ---- tabs ---- */
+
+#tabbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+#tabs {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  height: 100%;
+  align-items: center;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--chrome-fg);
+  opacity: 0.75;
+}
+
+.tab:hover { background: var(--btn-hover); opacity: 1; }
+
+.tab.active {
+  background: var(--pane-bg);
+  border-color: var(--chrome-border);
+  opacity: 1;
+  font-weight: 600;
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 1px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.tab-close:hover { background: var(--btn-hover); opacity: 1; }
+
+#tab-add {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--chrome-fg);
+  font-size: 16px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+#tab-add:hover { background: var(--btn-hover); opacity: 1; }
+
+.toolbar-right { display: flex; gap: 8px; margin-left: 12px; }
+
+.toolbar-right button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--chrome-fg);
+  cursor: pointer;
+  min-width: 72px;
+}
+
+.toolbar-right button:hover { background: var(--btn-hover); }
+
+#btn-help {
+  min-width: 34px;
+  padding: 4px 10px;
+  font-weight: 600;
+}
+
+/* ---- workspace / panes ---- */
+
+#workspace {
+  display: flex;
+  height: calc(100% - var(--toolbar-h));
+}
+
+#editor-pane {
+  flex: 0 0 50%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--pane-bg);
+}
+
+#divider {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: var(--divider);
+  transition: background 0.15s;
+}
+
+#divider:hover { background: var(--divider-hover); }
+
+body.dragging { cursor: col-resize; user-select: none; }
+body.dragging #divider { background: var(--divider-hover); }
+
+#preview-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--pane-bg);
+}
+
+#preview {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 2.5rem 4rem;
+}
+
+/* ---- view modes ---- */
+
+body.mode-editor #preview-pane,
+body.mode-editor #divider { display: none; }
+body.mode-editor #editor-pane { flex: 1 1 auto !important; }
+
+body.mode-preview #editor-pane,
+body.mode-preview #divider { display: none; }
+
+/* ---- CodeMirror sizing ---- */
+
+.cm-editor { height: 100%; font-size: 14px; }
+.cm-scroller {
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+  line-height: 1.6;
+  padding: 12px 4px;
+}
+
+/* ---- page view (Word-like A4 sheets) ---- */
+
+body.preview-paged #preview-pane { background: #d5d9de; }
+body.theme-dark.preview-paged #preview-pane { background: #0d1117; }
+
+body.preview-paged #preview {
+  max-width: none;
+  padding: 28px 16px 48px;
+}
+
+.page {
+  position: relative;
+  width: 794px;
+  min-height: 1123px;
+  margin: 0 auto 28px;
+  padding: 76px;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+}
+
+body.theme-dark .page {
+  background: #161b22;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+.page::after {
+  content: attr(data-pageno);
+  position: absolute;
+  bottom: 28px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: #9198a1;
+}
+
+/* ---- printing: only #print-root is printed, everything else hidden ---- */
+
+#print-root { display: none; }
+
+@media print {
+  html, body {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+  #toolbar, #workspace, #presenter { display: none !important; }
+  #print-root { display: block; }
+}
+
+/* ==========================================================================
+   Presenter mode
+   ========================================================================== */
+
+#presenter {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0b0e13;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#presenter[hidden] { display: none; }
+
+#slide-stage {
+  width: 960px;
+  height: 540px;
+  flex: 0 0 auto;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  padding: 48px 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  transform-origin: center center;
+}
+
+body.theme-dark #slide-stage { background: #161b22; }
+
+#slide { font-size: 24px; }
+#slide h1 { font-size: 2.4em; border-bottom: none; }
+#slide h2 { font-size: 1.8em; border-bottom: none; }
+#slide pre.hljs { font-size: 0.9em; }
+#slide .page-break { display: none; }
+
+#presenter-hud {
+  position: fixed;
+  right: 20px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #9198a1;
+  font-size: 14px;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+  cursor: default;
+}
+
+#presenter-hud:hover { opacity: 1; }
+
+#presenter-hud button {
+  border: 1px solid #30363d;
+  background: #161b22;
+  color: #e6edf3;
+  border-radius: 6px;
+  font-size: 15px;
+  padding: 2px 12px;
+  cursor: pointer;
+}
+
+#presenter-hud button:hover { background: #30363d; }
+
+/* ==========================================================================
+   Preview — GitHub-flavored markdown (light base; .theme-dark overrides)
+   NOTE: rules mentioning .markdown-body / .hljs are extracted for HTML
+   export, so light values live directly on .markdown-body selectors.
+   ========================================================================== */
+
+.markdown-body {
+  font-family: -apple-system, "Segoe UI", system-ui, "Noto Sans", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #1f2328;
+  word-wrap: break-word;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-body h1 {
+  font-size: 2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #d1d9e0;
+}
+
+.markdown-body h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #d1d9e0;
+}
+
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1em; }
+
+.markdown-body p { margin: 0 0 1em; }
+
+.markdown-body a { color: #0969da; text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+
+.markdown-body strong { font-weight: 600; }
+
+.markdown-body ul, .markdown-body ol {
+  margin: 0 0 1em;
+  padding-left: 2em;
+}
+
+.markdown-body li + li { margin-top: 0.25em; }
+
+.markdown-body blockquote {
+  margin: 0 0 1em;
+  padding: 0 1em;
+  color: #59636e;
+  border-left: 0.25em solid #d1d9e0;
+}
+
+.markdown-body hr {
+  height: 0.25em;
+  margin: 1.5em 0;
+  border: 0;
+  background-color: #d1d9e0;
+}
+
+.markdown-body img { max-width: 100%; }
+
+/* inline code */
+.markdown-body code {
+  font-family: "Cascadia Code", Consolas, ui-monospace, "SFMono-Regular", monospace;
+  font-size: 85%;
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  background-color: rgba(129, 139, 152, 0.18);
+}
+
+/* fenced code blocks */
+.markdown-body pre.hljs {
+  margin: 0 0 1em;
+  padding: 16px;
+  overflow-x: auto;
+  border-radius: 6px;
+  background-color: #f6f8fa;
+  line-height: 1.45;
+}
+
+.markdown-body pre.hljs code {
+  padding: 0;
+  background: transparent;
+  font-size: 85%;
+  white-space: pre;
+}
+
+/* tables */
+.markdown-body table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 0 0 1em;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.markdown-body th, .markdown-body td {
+  padding: 6px 13px;
+  border: 1px solid #d1d9e0;
+}
+
+.markdown-body th {
+  font-weight: 600;
+  background-color: #f6f8fa;
+}
+
+.markdown-body tr:nth-child(2n) td { background-color: #f6f8fa; }
+
+/* task lists (markdown-it-task-lists) */
+.markdown-body .task-list-item { list-style-type: none; }
+.markdown-body .task-list-item input[type="checkbox"] {
+  margin: 0 0.4em 0.2em -1.5em;
+  vertical-align: middle;
+}
+
+/* page breaks (\pagebreak) — dashed marker on screen, real break on paper */
+.markdown-body .page-break {
+  break-after: page;
+  border: none;
+  border-top: 2px dashed #d1d9e0;
+  margin: 1.5em 0;
+  position: relative;
+}
+
+.markdown-body .page-break::after {
+  content: "page break";
+  position: absolute;
+  top: -0.75em;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 8px;
+  font-size: 11px;
+  color: #9198a1;
+  background: var(--pane-bg, #ffffff);
+}
+
+@media print {
+  .markdown-body .page-break {
+    visibility: hidden;
+    margin: 0;
+    border: none;
+  }
+}
+
+/* footnotes */
+.markdown-body .footnotes {
+  font-size: 85%;
+  color: #59636e;
+}
+.markdown-body .footnotes-sep {
+  height: 1px;
+  background: #d1d9e0;
+}
+
+/* ---- highlight.js token colors (github light) ---- */
+
+.markdown-body .hljs-comment, .markdown-body .hljs-quote { color: #59636e; }
+.markdown-body .hljs-keyword, .markdown-body .hljs-selector-tag,
+.markdown-body .hljs-type, .markdown-body .hljs-meta { color: #cf222e; }
+.markdown-body .hljs-string, .markdown-body .hljs-regexp,
+.markdown-body .hljs-attr { color: #0a3069; }
+.markdown-body .hljs-number, .markdown-body .hljs-literal,
+.markdown-body .hljs-variable, .markdown-body .hljs-template-variable { color: #0550ae; }
+.markdown-body .hljs-title, .markdown-body .hljs-function .hljs-title,
+.markdown-body .hljs-title.function_ { color: #8250df; }
+.markdown-body .hljs-title.class_, .markdown-body .hljs-built_in { color: #953800; }
+.markdown-body .hljs-section, .markdown-body .hljs-name { color: #0550ae; font-weight: 600; }
+.markdown-body .hljs-tag { color: #116329; }
+.markdown-body .hljs-addition { color: #116329; background-color: #dafbe1; }
+.markdown-body .hljs-deletion { color: #82071e; background-color: #ffebe9; }
+
+/* ==========================================================================
+   Dark theme overrides for the preview (not included in HTML export)
+   ========================================================================== */
+
+body.theme-dark .markdown-body { color: #e6edf3; }
+
+body.theme-dark .markdown-body h1,
+body.theme-dark .markdown-body h2 { border-bottom-color: #30363d; }
+
+body.theme-dark .markdown-body a { color: #4493f8; }
+
+body.theme-dark .markdown-body blockquote {
+  color: #9198a1;
+  border-left-color: #3d444d;
+}
+
+body.theme-dark .markdown-body hr { background-color: #30363d; }
+
+body.theme-dark .markdown-body code {
+  background-color: rgba(101, 108, 118, 0.3);
+}
+
+body.theme-dark .markdown-body pre.hljs { background-color: #161b22; }
+
+body.theme-dark .markdown-body th,
+body.theme-dark .markdown-body td { border-color: #30363d; }
+
+body.theme-dark .markdown-body th { background-color: #161b22; }
+body.theme-dark .markdown-body tr:nth-child(2n) td { background-color: #161b22; }
+
+body.theme-dark .markdown-body .page-break { border-top-color: #3d444d; }
+
+body.theme-dark .markdown-body .footnotes { color: #9198a1; }
+body.theme-dark .markdown-body .footnotes-sep { background: #30363d; }
+
+/* hljs token colors (github dark) */
+body.theme-dark .markdown-body .hljs-comment,
+body.theme-dark .markdown-body .hljs-quote { color: #9198a1; }
+body.theme-dark .markdown-body .hljs-keyword,
+body.theme-dark .markdown-body .hljs-selector-tag,
+body.theme-dark .markdown-body .hljs-type,
+body.theme-dark .markdown-body .hljs-meta { color: #ff7b72; }
+body.theme-dark .markdown-body .hljs-string,
+body.theme-dark .markdown-body .hljs-regexp,
+body.theme-dark .markdown-body .hljs-attr { color: #a5d6ff; }
+body.theme-dark .markdown-body .hljs-number,
+body.theme-dark .markdown-body .hljs-literal,
+body.theme-dark .markdown-body .hljs-variable,
+body.theme-dark .markdown-body .hljs-template-variable { color: #79c0ff; }
+body.theme-dark .markdown-body .hljs-title,
+body.theme-dark .markdown-body .hljs-title.function_ { color: #d2a8ff; }
+body.theme-dark .markdown-body .hljs-title.class_,
+body.theme-dark .markdown-body .hljs-built_in { color: #ffa657; }
+body.theme-dark .markdown-body .hljs-section,
+body.theme-dark .markdown-body .hljs-name { color: #79c0ff; font-weight: 600; }
+body.theme-dark .markdown-body .hljs-tag { color: #7ee787; }
+body.theme-dark .markdown-body .hljs-addition { color: #aff5b4; background-color: #033a16; }
+body.theme-dark .markdown-body .hljs-deletion { color: #ffdcd7; background-color: #67060c; }

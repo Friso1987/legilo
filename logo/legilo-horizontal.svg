@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 640">
+<g transform="translate(64,64) scale(0.46875)"><defs><clipPath id="left"><rect width="471.04" height="1024"/></clipPath></defs>
+<rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="#FFFFFF"/>
+<rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="#0969DA" clip-path="url(#left)"/>
+<path d="M107.52000000000001,560 L107.52000000000001,376 L235.52,496 L363.52,376 L363.52,560" stroke="#FFFFFF" stroke-width="56" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M235.52,616 L235.52,720" stroke="#FFFFFF" stroke-width="56" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M151.52,636.0 L235.52,720 L319.52,636.0" stroke="#FFFFFF" stroke-width="56" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="543.04" y1="430" x2="928.0" y2="430" stroke="#1F2937" stroke-width="40" stroke-linecap="round"/>
+<line x1="543.04" y1="512" x2="812.512" y2="512" stroke="#1F2937" stroke-width="40" stroke-linecap="round"/>
+<line x1="543.04" y1="594" x2="704.7231999999999" y2="594" stroke="#1F2937" stroke-width="40" stroke-linecap="round"/></g><text x="680" y="372.0" font-family="Inter, Segoe UI, Arial" font-size="300" font-weight="700" fill="#1F2937">Legilo</text>
+</svg>

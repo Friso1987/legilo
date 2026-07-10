@@ -1,0 +1,98 @@
+{
+  "name": "legilo",
+  "productName": "Legilo",
+  "version": "0.1.0",
+  "description": "A split-view Markdown reader/editor for Windows",
+  "main": "main.js",
+  "author": "Friso Vos de Wael <friso.vosdewael@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Friso1987/legilo.git"
+  },
+  "scripts": {
+    "build:renderer": "esbuild src/renderer.js --bundle --format=iife --outfile=renderer/bundle.js",
+    "watch:renderer": "esbuild src/renderer.js --bundle --format=iife --outfile=renderer/bundle.js --watch",
+    "start": "npm run build:renderer && electron .",
+    "start:linux": "npm run build:renderer && electron --no-sandbox .",
+    "dist": "npm run build:renderer && electron-builder",
+    "dist:win": "npm run build:renderer && electron-builder --win",
+    "dist:store": "npm run build:renderer && electron-builder --win appx"
+  },
+  "build": {
+    "appId": "dev.friso.legilo",
+    "productName": "Legilo",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "logo/icon-256.png"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "appx"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "appx": {
+      "identityName": "FrisoVosdeWael.Legilo",
+      "publisher": "CN=00000000-0000-0000-0000-000000000000",
+      "publisherDisplayName": "Friso Vos de Wael",
+      "applicationId": "Legilo",
+      "displayName": "Legilo",
+      "backgroundColor": "#0969da"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "logo/icon-512.png",
+      "category": "Office",
+      "synopsis": "Split-view Markdown reader and editor"
+    },
+    "publish": {
+      "provider": "github"
+    },
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown",
+        "description": "Markdown document"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@codemirror/commands": "^6.6.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/language-data": "^6.5.0",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/theme-one-dark": "^6.1.0",
+    "@codemirror/view": "^6.34.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
+    "highlight.js": "^11.10.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-task-lists": "^2.1.1"
+  }
+}
