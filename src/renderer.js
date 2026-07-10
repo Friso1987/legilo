@@ -4,6 +4,7 @@ import {
   highlightActiveLineGutter, drawSelection, dropCursor,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { search, searchKeymap, openSearchPanel, highlightSelectionMatches } from '@codemirror/search';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
@@ -78,9 +79,10 @@ const slideCounter = document.getElementById('slide-counter');
 
 const app = {
   theme: 'light',
-  viewMode: 'split',    // 'split' | 'editor' | 'preview'
-  previewMode: 'flow',  // 'flow' | 'page' (Word-like sheets) | 'slides'
-  paperSize: 'A4',      // 'A4' | 'Letter'
+  viewMode: 'split',      // 'split' | 'editor' | 'preview'
+  previewMode: 'flow',    // 'flow' | 'page' (Word-like sheets) | 'slides'
+  paperSize: 'A4',        // 'A4' | 'Letter'
+  previewStyle: 'github', // 'github' | 'book' | 'minimal'
 };
 
 // ---------------------------------------------------------------------------
@@ -241,7 +243,9 @@ function createEditorState(content) {
       dropCursor(),
       history(),
       bracketMatching(),
-      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      search({ top: true }),
+      highlightSelectionMatches(),
+      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       EditorView.lineWrapping,
       themeCompartment.of(editorThemeExt()),
@@ -454,6 +458,37 @@ function applyViewMode(mode) {
   btnView.querySelector('.view-label').textContent = VIEW_LABELS[mode];
   window.legilo.setPref('viewMode', mode);
   editorView.requestMeasure();
+}
+
+// ---- preview styles: built-in presets + user-supplied CSS ----
+
+const PREVIEW_STYLES = ['github', 'book', 'minimal'];
+
+function applyPreviewStyle(style) {
+  app.previewStyle = style;
+  for (const s of PREVIEW_STYLES) {
+    document.body.classList.toggle(`style-${s}`, s === style && s !== 'github');
+  }
+  window.legilo.setPref('previewStyle', style);
+  renderPreview();
+}
+
+// User CSS is injected in a <style> after the app stylesheet so it wins on
+// equal specificity. Target `.markdown-body …` in the file for best results.
+function setCustomCss(css) {
+  let el = document.getElementById('custom-css');
+  if (!el) {
+    el = document.createElement('style');
+    el.id = 'custom-css';
+    document.head.appendChild(el);
+  }
+  el.textContent = css || '';
+  renderPreview();
+}
+
+async function loadCustomCss() {
+  const css = await window.legilo.pickCustomCss();
+  if (css !== null) setCustomCss(css);
 }
 
 const PREVIEW_LABELS = { flow: 'Flow', page: 'Page', slides: 'Slides' };
@@ -744,11 +779,18 @@ function getExportCss() {
     // CSSOM absolutized against the app, so local print/PDF renders math
     // correctly (an exported HTML falls back to system fonts elsewhere).
     const isKatex = (sheet.href || '').includes('/katex/');
+    const isCustom = sheet.ownerNode?.id === 'custom-css';
     for (const rule of rules) {
       const text = rule.cssText || '';
-      if (isKatex || text.includes('.markdown-body') || text.includes('.hljs') || text.includes('.katex')) {
+      if (isKatex || isCustom || text.includes('.markdown-body') || text.includes('.hljs') || text.includes('.katex')) {
         // Export uses the light theme: skip dark overrides and presenter rules
         if (text.includes('.theme-dark') || text.includes('#presenter') || text.includes('#slide')) continue;
+        // Preview-style presets: keep the active one (unprefixed), drop others
+        if (text.includes('body.style-')) {
+          if (!text.includes(`body.style-${app.previewStyle} `)) continue;
+          out += '\n' + text.replaceAll(`body.style-${app.previewStyle} `, '');
+          continue;
+        }
         out += '\n' + text.replaceAll('.theme-light ', '');
       }
     }
@@ -865,6 +907,17 @@ window.legilo.onMenu(async (action) => {
     case 'view-editor': return applyViewMode('editor');
     case 'view-preview': return applyViewMode('preview');
     case 'toggle-theme': return applyTheme(app.theme === 'dark' ? 'light' : 'dark');
+    case 'find': case 'replace': {
+      // the search panel lives in the editor — make sure it's visible
+      if (app.viewMode === 'preview') applyViewMode('split');
+      editorView.focus();
+      return openSearchPanel(editorView);
+    }
+    case 'style-github': return applyPreviewStyle('github');
+    case 'style-book': return applyPreviewStyle('book');
+    case 'style-minimal': return applyPreviewStyle('minimal');
+    case 'custom-css-load': return loadCustomCss();
+    case 'custom-css-clear': return setCustomCss('');
     case 'preview-flow': return applyPreviewMode('flow');
     case 'preview-page': return applyPreviewMode('page');
     case 'preview-slides': return applyPreviewMode('slides');
@@ -985,6 +1038,7 @@ to present this document, ←/→ to navigate, Esc to leave.
 | Ctrl+N / Ctrl+W / Ctrl+Tab | New / close / switch tab |
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
 | Ctrl+B / Ctrl+I / Ctrl+K | Bold / italic / link |
+| Ctrl+F / Ctrl+H | Find / replace |
 | Ctrl+P | Print |
 | Ctrl+E | Export to HTML |
 | Ctrl+Shift+P | Preview layout: flow / page / slides |
@@ -1006,6 +1060,11 @@ function showGuide() {
   applyTheme(prefs.theme || 'light');
   applyViewMode(prefs.viewMode || 'split');
   app.paperSize = prefs.paperSize || 'A4';
+  applyPreviewStyle(prefs.previewStyle || 'github');
+  if (prefs.customCssPath) {
+    const css = await window.legilo.readFile(prefs.customCssPath);
+    if (css !== null) setCustomCss(css);
+  }
   applyPreviewMode(prefs.previewMode || 'flow');
 
   const session = await window.legilo.getSession();

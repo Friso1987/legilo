@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('legilo', {
   // renderer -> main
   openFile: () => ipcRenderer.invoke('dialog:open'),
   pickImage: () => ipcRenderer.invoke('dialog:pick-image'),
+  pickCustomCss: () => ipcRenderer.invoke('dialog:pick-custom-css'),
   popupInsertMenu: () => ipcRenderer.send('menu:popup-insert'),
   readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
   getSession: () => ipcRenderer.invoke('session:get'),

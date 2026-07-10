@@ -181,6 +181,9 @@ function buildMenu() {
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        { label: 'Find…', accelerator: 'CmdOrCtrl+F', click: () => sendMenu('find') },
+        { label: 'Replace…', accelerator: 'CmdOrCtrl+H', click: () => sendMenu('replace') },
       ],
     },
     {
@@ -203,6 +206,17 @@ function buildMenu() {
             { type: 'radio', label: 'Slides', checked: getPreviewMode() === 'slides', click: () => sendMenu('preview-slides') },
             { type: 'separator' },
             { label: 'Cycle Layout', accelerator: 'CmdOrCtrl+Shift+P', click: () => sendMenu('cycle-preview') },
+          ],
+        },
+        {
+          label: 'Preview Style',
+          submenu: [
+            { type: 'radio', label: 'GitHub', checked: store.get('previewStyle', 'github') === 'github', click: () => sendMenu('style-github') },
+            { type: 'radio', label: 'Book', checked: store.get('previewStyle', 'github') === 'book', click: () => sendMenu('style-book') },
+            { type: 'radio', label: 'Minimal', checked: store.get('previewStyle', 'github') === 'minimal', click: () => sendMenu('style-minimal') },
+            { type: 'separator' },
+            { label: 'Load Custom CSS…', click: () => sendMenu('custom-css-load') },
+            { label: 'Clear Custom CSS', enabled: !!store.get('customCssPath'), click: () => { store.delete('customCssPath'); buildMenu(); sendMenu('custom-css-clear'); } },
           ],
         },
         {
@@ -281,6 +295,24 @@ ipcMain.handle('dialog:pick-image', async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
+});
+
+// Pick a user stylesheet for the preview; remembers the path for next launch.
+ipcMain.handle('dialog:pick-custom-css', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [{ name: 'CSS', extensions: ['css'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const cssPath = result.filePaths[0];
+  try {
+    const css = await fs.readFile(cssPath, 'utf8');
+    store.set('customCssPath', cssPath);
+    buildMenu(); // enable "Clear Custom CSS"
+    return css;
+  } catch (_) {
+    return null;
+  }
 });
 
 // Reads a file by path (used for session restore); null when unreadable.
@@ -388,16 +420,19 @@ ipcMain.handle('prefs:get', () => ({
   viewMode: store.get('viewMode'),
   previewMode: getPreviewMode(),
   paperSize: store.get('paperSize', 'A4'),
+  previewStyle: store.get('previewStyle', 'github'),
+  customCssPath: store.get('customCssPath', null),
   showGuideOnStartup: store.get('showGuideOnStartup'),
 }));
 
-const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize'];
+const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize', 'previewStyle'];
+const MENU_PREF_KEYS = ['previewMode', 'paperSize', 'previewStyle'];
 
 ipcMain.on('prefs:set', (_e, { key, value }) => {
   if (!PREF_KEYS.includes(key)) return;
   store.set(key, value);
-  // keep the View-menu radio items (layout, paper size) in sync
-  if (key === 'previewMode' || key === 'paperSize') buildMenu();
+  // keep the View-menu radio items in sync
+  if (MENU_PREF_KEYS.includes(key)) buildMenu();
 });
 
 // Open tabs (file paths + active index), restored on next launch.
