@@ -4,7 +4,6 @@ A split-view Markdown reader/editor. Editor on the left (CodeMirror 6 with Markd
 syntax highlighting), live GitHub-flavoredpreview on the right (markdown-it + highlight.js),
 with synchronized scrolling and a draggable divider.
 
-*Legilo* is Esperanto for "reading device".
 
 ## Features
 
