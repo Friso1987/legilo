@@ -12,7 +12,10 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import MarkdownIt from 'markdown-it';
 import markdownItFootnote from 'markdown-it-footnote';
 import markdownItTaskLists from 'markdown-it-task-lists';
+import markdownItKatex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
+import TurndownService from 'turndown';
+import { gfm as turndownGfm } from 'turndown-plugin-gfm';
 
 // ---------------------------------------------------------------------------
 // Markdown renderer
@@ -32,7 +35,8 @@ const md = new MarkdownIt({
   },
 })
   .use(markdownItFootnote)
-  .use(markdownItTaskLists, { enabled: true, label: true });
+  .use(markdownItTaskLists, { enabled: true, label: true })
+  .use(markdownItKatex.default ?? markdownItKatex, { throwOnError: false });
 
 // markdown-it rejects file: URLs by default; this is a local desktop app
 // where linking local images/files is the point.
@@ -74,8 +78,9 @@ const slideCounter = document.getElementById('slide-counter');
 
 const app = {
   theme: 'light',
-  viewMode: 'split', // 'split' | 'editor' | 'preview'
-  pageView: false,   // Word-like A4 sheets in the preview
+  viewMode: 'split',    // 'split' | 'editor' | 'preview'
+  previewMode: 'flow',  // 'flow' | 'page' (Word-like sheets) | 'slides'
+  paperSize: 'A4',      // 'A4' | 'Letter'
 };
 
 // ---------------------------------------------------------------------------
@@ -276,16 +281,23 @@ function renderMarkdownInto(el, src) {
 }
 
 function renderPreview() {
-  if (app.pageView) renderPaged();
+  if (app.previewMode === 'page') renderPaged();
+  else if (app.previewMode === 'slides') renderSlidesPreview();
   else renderMarkdownInto(previewEl, getContent());
 }
 
-// ---- Word-like page view: distribute rendered blocks over A4 sheets ----
+// ---- Word-like page view: distribute rendered blocks over paper sheets ----
 
-// A4 at 96 dpi ≈ 794×1123 px; 20 mm margins ≈ 76 px.
-const PAGE = { width: 794, height: 1123, margin: 76 };
+// Pixel sizes at 96 dpi, with ~20 mm margins.
+const PAPER_SIZES = {
+  A4: { width: 794, height: 1123, margin: 76 },      // 210 × 297 mm
+  Letter: { width: 816, height: 1056, margin: 76 },  // 8.5 × 11 in
+};
 
 function renderPaged() {
+  const PAGE = PAPER_SIZES[app.paperSize] || PAPER_SIZES.A4;
+  document.documentElement.style.setProperty('--page-w', `${PAGE.width}px`);
+  document.documentElement.style.setProperty('--page-h', `${PAGE.height}px`);
   const contentH = PAGE.height - 2 * PAGE.margin;
 
   // Render at page width in an off-screen box so measurements are correct.
@@ -310,9 +322,10 @@ function renderPaged() {
 
   newPage();
   for (const node of [...scratch.childNodes]) {
-    // explicit page break: start a fresh sheet (marker itself isn't shown)
+    // Explicit page break: always start a fresh sheet (the marker itself
+    // isn't shown). Consecutive breaks therefore produce blank pages.
     if (node.nodeType === 1 && node.classList.contains('page-break')) {
-      if (pageContent.children.length > 0) newPage();
+      newPage();
       continue;
     }
     pageContent.appendChild(node);
@@ -340,6 +353,55 @@ function renderPaged() {
     }
   }
 }
+
+// ---- slides preview: scroll through the presentation in the preview pane ----
+
+// Shrinks the base font until `el` fits in `availH` px. Returns the final
+// scale factor (1 = untouched).
+function fitContent(el, availH, baseFontPx) {
+  el.style.fontSize = '';
+  let scale = 1;
+  for (let i = 0; i < 4 && el.scrollHeight > availH && scale > 0.4; i++) {
+    scale = Math.max(0.4, scale * (availH / el.scrollHeight) * 0.98);
+    el.style.fontSize = `${baseFontPx * scale}px`;
+  }
+  return scale;
+}
+
+const SLIDE_BASE_FONT = 24;
+
+function renderSlidesPreview() {
+  previewEl.innerHTML = '';
+  const parts = splitSlides(getContent());
+  parts.forEach((part, i) => {
+    const card = document.createElement('div');
+    card.className = 'slide-card';
+    card.dataset.slideno = `${i + 1} / ${parts.length}`;
+    const body = document.createElement('div');
+    body.className = 'slide-card-content markdown-body';
+    card.appendChild(body);
+    previewEl.appendChild(card);
+    renderMarkdownInto(body, part.text);
+    const scale = fitContent(body, card.clientHeight - 96, SLIDE_BASE_FONT);
+    if (scale < 1) {
+      card.classList.add('overfull');
+      card.dataset.warn = `text scaled to ${Math.round(scale * 100)}% — consider splitting this slide with ---`;
+    }
+  });
+  scaleSlideCards();
+}
+
+// Fit the fixed-size cards to the pane width (zoom affects layout, so the
+// scroll height stays correct — fine in Chromium, which is all we run in).
+function scaleSlideCards() {
+  if (app.previewMode !== 'slides') return;
+  const zoom = Math.min(1, (previewPane.clientWidth - 48) / 960);
+  for (const card of previewEl.querySelectorAll('.slide-card')) {
+    card.style.zoom = zoom;
+  }
+}
+
+new ResizeObserver(() => scaleSlideCards()).observe(previewPane);
 
 // ---------------------------------------------------------------------------
 // Synchronized scrolling (proportional)
@@ -394,15 +456,29 @@ function applyViewMode(mode) {
   editorView.requestMeasure();
 }
 
-function applyPageView(on) {
-  app.pageView = on;
-  document.body.classList.toggle('preview-paged', on);
-  document.getElementById('btn-page').querySelector('.page-label').textContent = on ? 'Flow' : 'Page';
-  window.legilo.setPref('pageView', on);
+const PREVIEW_LABELS = { flow: 'Flow', page: 'Page', slides: 'Slides' };
+
+function applyPreviewMode(mode) {
+  app.previewMode = mode;
+  document.body.classList.toggle('preview-paged', mode === 'page');
+  document.body.classList.toggle('preview-slides', mode === 'slides');
+  document.getElementById('btn-page').querySelector('.page-label').textContent = PREVIEW_LABELS[mode];
+  window.legilo.setPref('previewMode', mode);
   renderPreview();
 }
 
-document.getElementById('btn-page').addEventListener('click', () => applyPageView(!app.pageView));
+function cyclePreviewMode() {
+  const order = ['flow', 'page', 'slides'];
+  applyPreviewMode(order[(order.indexOf(app.previewMode) + 1) % order.length]);
+}
+
+function applyPaperSize(size) {
+  app.paperSize = size;
+  window.legilo.setPref('paperSize', size);
+  renderPreview();
+}
+
+document.getElementById('btn-page').addEventListener('click', cyclePreviewMode);
 
 btnTheme.addEventListener('click', () => applyTheme(app.theme === 'dark' ? 'light' : 'dark'));
 btnView.addEventListener('click', () => {
@@ -473,8 +549,18 @@ function slideForCursor() {
 }
 
 function renderSlide() {
-  slideEl.innerHTML = md.render(slides[slideIndex].text);
+  renderMarkdownInto(slideEl, slides[slideIndex].text);
   slideCounter.textContent = `${slideIndex + 1} / ${slides.length}`;
+  // Shrink overflowing slides so nothing falls off the edge, and tell the
+  // presenter about it so they know to split the slide.
+  const warn = document.getElementById('slide-warn');
+  const scale = fitContent(slideEl, slideStage.clientHeight - 96, SLIDE_BASE_FONT);
+  if (scale < 1) {
+    warn.textContent = `⚠ Text scaled to ${Math.round(scale * 100)}% to fit — consider splitting this slide with ---`;
+    warn.hidden = false;
+  } else {
+    warn.hidden = true;
+  }
 }
 
 function fitSlide() {
@@ -554,7 +640,25 @@ async function saveDocument({ saveAs = false } = {}) {
 async function openDocument() {
   const result = await window.legilo.openFile();
   if (!result) return;
+  if (/\.html?$/i.test(result.filePath)) return importHtml(result.filePath, result.content);
   openPath(result.filePath, result.content);
+}
+
+// HTML files are converted to Markdown and opened as a new, unsaved document
+// (so saving writes a .md instead of clobbering the original .html).
+function importHtml(filePath, html) {
+  const turndown = new TurndownService({
+    headingStyle: 'atx',
+    codeBlockStyle: 'fenced',
+    bulletListMarker: '-',
+  }).use(turndownGfm);
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const markdown = turndown.turndown(doc.body.innerHTML);
+  const name = filePath.split(/[\\/]/).pop().replace(/\.html?$/i, '.md');
+  const tab = newTab({ content: markdown, label: name });
+  tab.dirty = true; // imported, not yet saved as markdown
+  renderTabBar();
+  updateTitle();
 }
 
 function openPath(filePath, content) {
@@ -636,9 +740,13 @@ function getExportCss() {
   for (const sheet of document.styleSheets) {
     let rules;
     try { rules = sheet.cssRules; } catch (_) { continue; }
+    // KaTeX's stylesheet is included wholesale; its font URLs come out of the
+    // CSSOM absolutized against the app, so local print/PDF renders math
+    // correctly (an exported HTML falls back to system fonts elsewhere).
+    const isKatex = (sheet.href || '').includes('/katex/');
     for (const rule of rules) {
       const text = rule.cssText || '';
-      if (text.includes('.markdown-body') || text.includes('.hljs')) {
+      if (isKatex || text.includes('.markdown-body') || text.includes('.hljs') || text.includes('.katex')) {
         // Export uses the light theme: skip dark overrides and presenter rules
         if (text.includes('.theme-dark') || text.includes('#presenter') || text.includes('#slide')) continue;
         out += '\n' + text.replaceAll('.theme-light ', '');
@@ -743,8 +851,8 @@ window.legilo.onMenu(async (action) => {
   if (action.startsWith('insert:')) return doInsert(action.slice(7));
   switch (action) {
     case 'print': return printDocument();
-    case 'print-preview': return window.legilo.printPreview(buildStandaloneHtml());
-    case 'export-pdf': return window.legilo.exportPdf(buildStandaloneHtml(), `${docTitle()}.pdf`);
+    case 'print-preview': return window.legilo.printPreview(buildStandaloneHtml(), app.paperSize);
+    case 'export-pdf': return window.legilo.exportPdf(buildStandaloneHtml(), `${docTitle()}.pdf`, app.paperSize);
     case 'new': return newTab();
     case 'open': return openDocument();
     case 'close-tab': return closeTab(activeTab);
@@ -757,7 +865,12 @@ window.legilo.onMenu(async (action) => {
     case 'view-editor': return applyViewMode('editor');
     case 'view-preview': return applyViewMode('preview');
     case 'toggle-theme': return applyTheme(app.theme === 'dark' ? 'light' : 'dark');
-    case 'toggle-pageview': return applyPageView(!app.pageView);
+    case 'preview-flow': return applyPreviewMode('flow');
+    case 'preview-page': return applyPreviewMode('page');
+    case 'preview-slides': return applyPreviewMode('slides');
+    case 'cycle-preview': return cyclePreviewMode();
+    case 'paper-A4': return applyPaperSize('A4');
+    case 'paper-Letter': return applyPaperSize('Letter');
     case 'presenter': return presenting ? exitPresenter() : enterPresenter();
     case 'show-guide': return showGuide();
   }
@@ -839,6 +952,14 @@ Here is a footnote reference.[^1]
 
 [^1]: And here is the footnote itself.
 
+## Math
+
+Inline math between dollar signs, like $E = mc^2$, or display math:
+
+$$
+Q = \\frac{\\Delta S}{\\Delta t} + \\sum_{i} q_i
+$$
+
 \\pagebreak
 
 ## Page breaks
@@ -866,7 +987,7 @@ to present this document, ←/→ to navigate, Esc to leave.
 | Ctrl+B / Ctrl+I / Ctrl+K | Bold / italic / link |
 | Ctrl+P | Print |
 | Ctrl+E | Export to HTML |
-| Ctrl+Shift+P | Page view on/off |
+| Ctrl+Shift+P | Preview layout: flow / page / slides |
 | Ctrl+Shift+D | Dark theme on/off |
 | Ctrl+1 / 2 / 3 | Split / editor / preview |
 | F5 | Presenter mode |
@@ -884,7 +1005,8 @@ function showGuide() {
   const prefs = await window.legilo.getPrefs();
   applyTheme(prefs.theme || 'light');
   applyViewMode(prefs.viewMode || 'split');
-  applyPageView(!!prefs.pageView);
+  app.paperSize = prefs.paperSize || 'A4';
+  applyPreviewMode(prefs.previewMode || 'flow');
 
   const session = await window.legilo.getSession();
   for (const filePath of session?.files || []) {

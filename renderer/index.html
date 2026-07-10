@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: http: https:;" />
   <title>Legilo</title>
+  <link rel="stylesheet" href="katex/katex.min.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="theme-light mode-split">
@@ -15,8 +16,8 @@
     </div>
     <div class="toolbar-right">
       <button id="btn-insert" title="Insert markdown: headings, images, tables, code…">Insert ▾</button>
-      <button id="btn-page" title="Toggle Word-like page view in the preview (Ctrl+Shift+P)">
-        <span class="page-label">Page</span>
+      <button id="btn-page" title="Cycle preview layout: flow / page / slides (Ctrl+Shift+P)">
+        <span class="page-label">Flow</span>
       </button>
       <button id="btn-present" title="Presenter mode (F5) — slides split on ---">Present</button>
       <button id="btn-view" title="Cycle view: split / editor / preview (Ctrl+1/2/3)">
@@ -41,6 +42,7 @@
     <div id="slide-stage">
       <article id="slide" class="markdown-body"></article>
     </div>
+    <div id="slide-warn" hidden></div>
     <div id="presenter-hud">
       <button id="slide-prev" title="Previous (←)">‹</button>
       <span id="slide-counter">1 / 1</span>

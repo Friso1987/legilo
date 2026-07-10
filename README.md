@@ -10,9 +10,14 @@ with synchronized scrolling and a draggable divider.
 - **Split view** with a draggable divider, plus editor-only and preview-only
   modes (toolbar button or `Ctrl+1` / `Ctrl+2` / `Ctrl+3`)
 - **Tabs** with session restore (`Ctrl+N` / `Ctrl+W` / `Ctrl+Tab`)
-- **Presenter mode** (`F5`): Marp-style slides split on `---`
-- **Page view** (`Ctrl+Shift+P`): Word-like A4 sheets in the preview showing
-  how the document fills printed pages
+- **Presenter mode** (`F5`): Marp-style slides split on `---`; overfull
+  slides shrink to fit, with a hint to split them
+- **Preview layouts** (`Ctrl+Shift+P`): flow, Word-like page view (A4 or US
+  Letter, View → Paper Size), or scrollable slides
+- **Math** (KaTeX): `$inline$` and `$$display$$` equations
+- **Page breaks**: a `\pagebreak` line forces a new page in page view,
+  print and PDF
+- **HTML import**: opening an `.html` file converts it to Markdown
 - **Insert menu** (menu bar + toolbar): headings, bold/italic, links, images
   via a file picker, code blocks, tables, task lists, quotes, footnotes
 - **Print** (`Ctrl+P`), **print preview** (opens a PDF), and **Export to

@@ -4,3 +4,4 @@ renderer/bundle.js
 renderer/bundle.css
 *.log
 .claude/
+renderer/katex/

@@ -11,7 +11,7 @@
     "url": "https://github.com/Friso1987/legilo.git"
   },
   "scripts": {
-    "build:renderer": "esbuild src/renderer.js --bundle --format=iife --outfile=renderer/bundle.js",
+    "build:renderer": "node scripts/copy-assets.mjs && esbuild src/renderer.js --bundle --format=iife --outfile=renderer/bundle.js",
     "watch:renderer": "esbuild src/renderer.js --bundle --format=iife --outfile=renderer/bundle.js --watch",
     "start": "npm run build:renderer && electron .",
     "start:linux": "npm run build:renderer && electron --no-sandbox .",
@@ -87,12 +87,16 @@
     "@codemirror/state": "^6.4.0",
     "@codemirror/theme-one-dark": "^6.1.0",
     "@codemirror/view": "^6.34.0",
+    "@vscode/markdown-it-katex": "^1.1.2",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
     "highlight.js": "^11.10.0",
+    "katex": "^0.17.0",
     "markdown-it": "^14.1.0",
     "markdown-it-footnote": "^4.0.0",
-    "markdown-it-task-lists": "^2.1.1"
+    "markdown-it-task-lists": "^2.1.1",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
   }
 }

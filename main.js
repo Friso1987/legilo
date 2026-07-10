@@ -66,6 +66,11 @@ function sendMenu(action) {
   if (win) win.webContents.send('menu', action);
 }
 
+// previewMode with migration from the old boolean pageView pref.
+function getPreviewMode() {
+  return store.get('previewMode') ?? (store.get('pageView') ? 'page' : 'flow');
+}
+
 // Shared between the menu bar and the toolbar's Insert dropdown.
 function insertMenuTemplate() {
   return [
@@ -134,7 +139,23 @@ function buildMenu() {
         { label: 'Preview Only', accelerator: 'CmdOrCtrl+3', click: () => sendMenu('view-preview') },
         { type: 'separator' },
         { label: 'Presenter Mode', accelerator: 'F5', click: () => sendMenu('presenter') },
-        { label: 'Toggle Page View', accelerator: 'CmdOrCtrl+Shift+P', click: () => sendMenu('toggle-pageview') },
+        {
+          label: 'Preview Layout',
+          submenu: [
+            { type: 'radio', label: 'Flow', checked: getPreviewMode() === 'flow', click: () => sendMenu('preview-flow') },
+            { type: 'radio', label: 'Page', checked: getPreviewMode() === 'page', click: () => sendMenu('preview-page') },
+            { type: 'radio', label: 'Slides', checked: getPreviewMode() === 'slides', click: () => sendMenu('preview-slides') },
+            { type: 'separator' },
+            { label: 'Cycle Layout', accelerator: 'CmdOrCtrl+Shift+P', click: () => sendMenu('cycle-preview') },
+          ],
+        },
+        {
+          label: 'Paper Size',
+          submenu: [
+            { type: 'radio', label: 'A4', checked: store.get('paperSize', 'A4') === 'A4', click: () => sendMenu('paper-A4') },
+            { type: 'radio', label: 'US Letter', checked: store.get('paperSize', 'A4') === 'Letter', click: () => sendMenu('paper-Letter') },
+          ],
+        },
         { type: 'separator' },
         { label: 'Next Tab', accelerator: 'Ctrl+Tab', click: () => sendMenu('next-tab') },
         { label: 'Previous Tab', accelerator: 'Ctrl+Shift+Tab', click: () => sendMenu('prev-tab') },
@@ -172,10 +193,17 @@ const MD_FILTERS = [
   { name: 'All Files', extensions: ['*'] },
 ];
 
+const OPEN_FILTERS = [
+  { name: 'Markdown & HTML', extensions: ['md', 'markdown', 'mdown', 'txt', 'html', 'htm'] },
+  { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'txt'] },
+  { name: 'HTML', extensions: ['html', 'htm'] },
+  { name: 'All Files', extensions: ['*'] },
+];
+
 ipcMain.handle('dialog:open', async () => {
   const result = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
-    filters: MD_FILTERS,
+    filters: OPEN_FILTERS,
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   const filePath = result.filePaths[0];
@@ -246,10 +274,10 @@ async function loadPrintWindow(html) {
 
 // "Preview" = render to a temp PDF and open it in the system PDF viewer,
 // which doubles as a place to print from.
-ipcMain.handle('file:print-preview', async (_e, html) => {
+ipcMain.handle('file:print-preview', async (_e, { html, paperSize }) => {
   const { w, tmpFile } = await loadPrintWindow(html);
   try {
-    const pdf = await w.webContents.printToPDF({ printBackground: true });
+    const pdf = await w.webContents.printToPDF({ printBackground: true, pageSize: paperSize || 'A4' });
     const pdfFile = path.join(app.getPath('temp'), `legilo-preview-${Date.now()}.pdf`);
     await fs.writeFile(pdfFile, pdf);
     await shell.openPath(pdfFile);
@@ -260,7 +288,7 @@ ipcMain.handle('file:print-preview', async (_e, html) => {
   }
 });
 
-ipcMain.handle('file:export-pdf', async (_e, { html, defaultName }) => {
+ipcMain.handle('file:export-pdf', async (_e, { html, defaultName, paperSize }) => {
   const result = await dialog.showSaveDialog(win, {
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
     defaultPath: defaultName || 'export.pdf',
@@ -268,7 +296,7 @@ ipcMain.handle('file:export-pdf', async (_e, { html, defaultName }) => {
   if (result.canceled || !result.filePath) return null;
   const { w, tmpFile } = await loadPrintWindow(html);
   try {
-    const pdf = await w.webContents.printToPDF({ printBackground: true });
+    const pdf = await w.webContents.printToPDF({ printBackground: true, pageSize: paperSize || 'A4' });
     await fs.writeFile(result.filePath, pdf);
     return result.filePath;
   } finally {
@@ -302,12 +330,18 @@ ipcMain.on('window:set-title', (_e, title) => {
 ipcMain.handle('prefs:get', () => ({
   theme: store.get('theme'),
   viewMode: store.get('viewMode'),
-  pageView: store.get('pageView', false),
+  previewMode: getPreviewMode(),
+  paperSize: store.get('paperSize', 'A4'),
   showGuideOnStartup: store.get('showGuideOnStartup'),
 }));
 
+const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize'];
+
 ipcMain.on('prefs:set', (_e, { key, value }) => {
-  if (key === 'theme' || key === 'viewMode' || key === 'pageView') store.set(key, value);
+  if (!PREF_KEYS.includes(key)) return;
+  store.set(key, value);
+  // keep the View-menu radio items (layout, paper size) in sync
+  if (key === 'previewMode' || key === 'paperSize') buildMenu();
 });
 
 // Open tabs (file paths + active index), restored on next launch.
