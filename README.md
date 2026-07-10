@@ -1,80 +1,131 @@
+<div align="center">
+
+<img src="logo/icon-256.png" width="96" alt="Legilo logo" />
+
 # Legilo
 
-A split-view Markdown reader/editor. Editor on the left (CodeMirror 6 with Markdown 
-syntax highlighting), live GitHub-flavoredpreview on the right (markdown-it + highlight.js),
-with synchronized scrolling and a draggable divider.
+**Write it once. Read it, present it, print it.**
 
+Legilo is a split-view Markdown editor that turns one plain-text document into
+a live preview, a slide deck, and a print-ready paper — without ever leaving
+the app.
 
-## Features
+![Windows](https://img.shields.io/badge/Windows-supported-0969da)
+![macOS](https://img.shields.io/badge/macOS-supported-0969da)
+![Linux](https://img.shields.io/badge/Linux-supported-0969da)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-- **Split view** with a draggable divider, plus editor-only and preview-only
-  modes (toolbar button or `Ctrl+1` / `Ctrl+2` / `Ctrl+3`)
-- **Tabs** with session restore (`Ctrl+N` / `Ctrl+W` / `Ctrl+Tab`)
-- **Presenter mode** (`F5`): Marp-style slides split on `---`; overfull
-  slides shrink to fit, with a hint to split them
-- **Preview layouts** (`Ctrl+Shift+P`): flow, Word-like page view (A4 or US
-  Letter, View → Paper Size), or scrollable slides
-- **Math** (KaTeX): `$inline$` and `$$display$$` equations
-- **Page breaks**: a `\pagebreak` line forces a new page in page view,
-  print and PDF
-- **HTML import**: opening an `.html` file converts it to Markdown
-- **Insert menu** (menu bar + toolbar): headings, bold/italic, links, images
-  via a file picker, code blocks, tables, task lists, quotes, footnotes
-- **Print** (`Ctrl+P`), **print preview** (opens a PDF), and **Export to
-  PDF/HTML**; links open in the system browser
-- **Synchronized scrolling** between editor and preview
-- **GitHub-flavored markdown**: tables, footnotes, task lists, fenced code
-  blocks with syntax highlighting
-- **Native menu & shortcuts**: New (`Ctrl+N`), Open (`Ctrl+O`), Save
-  (`Ctrl+S`), Save As (`Ctrl+Shift+S`), Export to HTML (`Ctrl+E`)
-- **Unsaved-changes guard** before closing or replacing the current document,
-  with an asterisk indicator in the window title
-- **Light & dark themes** (`Ctrl+Shift+D`), remembered between sessions along
-  with window size/position and view mode (via `electron-store`)
+<img src="docs/screenshot-split.png" width="850" alt="Legilo split view: Markdown on the left, live preview on the right" />
 
-## Development
+</div>
+
+## ✍️ Write
+
+- **Split view** — CodeMirror editor on the left, live GitHub-style preview on
+  the right, with synchronized scrolling and a draggable divider
+- **Tabs** that reopen exactly where you left off, with unsaved-changes guards
+- **Find & replace** (`Ctrl+F` / `Ctrl+H`) with regex and whole-word options
+- **Insert menu & right-click menus** — images via a file picker, tables, code
+  blocks, task lists, footnotes, links… no syntax to memorize
+- **Spellcheck** with suggestions, straight from your OS dictionary
+- **Everything Markdown**: GitHub-flavored tables, task lists, footnotes,
+  fenced code with syntax highlighting — plus **KaTeX math**
+  (`$E = mc^2$` and `$$…$$` blocks)
+- Opening an **HTML file converts it to Markdown** automatically
+
+## 🎤 Present
+
+Any document is already a slide deck: a `---` line starts a new slide.
+
+- **Presenter mode** (`F5`) — fullscreen slides with keyboard/click navigation
+- **Slides layout** in the preview pane, to review your deck while writing
+- Overfull slides **auto-shrink to fit** and show a hint so you know when to
+  split them
+
+<div align="center">
+<img src="docs/screenshot-presenter.png" width="850" alt="Presenter mode: fullscreen slide with auto-fit warning" />
+</div>
+
+## 📄 Print & export
+
+- **Page view** — Word-like sheets (A4 or US Letter) that show exactly how
+  your document fills printed pages while you type
+- **`\pagebreak`** forces a new page — in the preview, in print, and in PDF
+- **Print** (`Ctrl+P`), **print preview**, **Export to PDF** and **Export to
+  HTML** — all styled, math and code highlighting included
+
+## 🎨 Make it yours
+
+- **Light & dark themes** (`Ctrl+Shift+D`)
+- **Preview styles**: GitHub, Book (serif, print-friendly), or Minimal
+- **Bring your own CSS** — load any stylesheet targeting `.markdown-body`
+- Window size, theme, layout, and open tabs are remembered between sessions
+
+<div align="center">
+<img src="docs/screenshot-slides-dark.png" width="850" alt="Dark theme with the slides preview layout" />
+</div>
+
+## Install
+
+Grab the latest installer from the [Releases](../../releases) page:
+
+| OS | File |
+| --- | --- |
+| Windows | `Legilo Setup <version>.exe` (also available in the Microsoft Store) |
+| macOS | `Legilo-<version>.dmg` — unsigned: right-click → Open the first time |
+| Linux | `Legilo-<version>.AppImage` or `.deb` |
+
+## Build from source
 
 ```bash
+git clone https://github.com/Friso1987/legilo.git
+cd legilo
 npm install
-npm start          # bundles the renderer with esbuild, then launches Electron
+npm start        # development mode
+npm run dist     # build installers for your OS
 ```
 
-On Linux dev machines where Chromium's SUID sandbox isn't set up (error:
-`chrome-sandbox is owned by root and has mode 4755`), either run the dev-only
-unsandboxed variant:
+<details>
+<summary>Linux dev note: Chromium sandbox error on <code>npm start</code></summary>
 
-```bash
-npm run start:linux
-```
-
-or fix the sandbox helper once per `node_modules` install (survives until the
-Electron package is reinstalled/updated):
+If Electron aborts with `chrome-sandbox is owned by root and has mode 4755`,
+either run `npm run start:linux` (dev-only, unsandboxed) or fix the helper
+once per install:
 
 ```bash
 sudo chown root:root node_modules/electron/dist/chrome-sandbox
 sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
 
-This is a dev-machine quirk only; the packaged Windows app is unaffected.
+</details>
 
-For faster iteration you can keep the renderer bundle rebuilding in a second
-terminal and just reload the Electron window (`Ctrl+R` via View → Toggle Dev
-Tools console, or restart):
-
-```bash
-npm run watch:renderer
-```
+Releases are built for all three platforms by GitHub Actions: push a tag like
+`v0.2.0` (`npm version 0.2.0 && git push --follow-tags`) and the installers
+appear on a draft GitHub release.
 
 ### Project layout
 
 ```
-main.js            # Electron main process: window, native menu, dialogs, fs, prefs
-preload.js         # contextBridge API (contextIsolation on, sandbox on)
-src/renderer.js    # renderer source (bundled by esbuild)
-renderer/
-  index.html       # app shell
-  styles.css       # app chrome + GFM preview styling (light/dark)
-  bundle.js        # generated by esbuild — do not edit
+main.js            # Electron main process: window, native menus, dialogs, printing
+preload.js         # contextBridge API (contextIsolation + sandbox on)
+src/renderer.js    # editor, preview, presenter, pagination (bundled by esbuild)
+renderer/          # app shell, styles, generated bundles
 ```
 
+## Keyboard shortcuts
 
+| | |
+| --- | --- |
+| `Ctrl+N` / `Ctrl+W` / `Ctrl+Tab` | New / close / switch tab |
+| `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` | Open / Save / Save As |
+| `Ctrl+B` / `Ctrl+I` / `Ctrl+K` | Bold / italic / link |
+| `Ctrl+F` / `Ctrl+H` | Find / replace |
+| `Ctrl+P` / `Ctrl+E` | Print / export HTML |
+| `Ctrl+1` `2` `3` | Split / editor / preview |
+| `Ctrl+Shift+P` | Preview layout: flow / page / slides |
+| `Ctrl+Shift+D` | Dark theme |
+| `F5` | Presenter mode |
+
+## License
+
+[MIT](LICENSE)
