@@ -41,9 +41,9 @@
       "createDesktopShortcut": true
     },
     "appx": {
-      "identityName": "FrisoVosdeWael.Legilo",
-      "publisher": "CN=00000000-0000-0000-0000-000000000000",
-      "publisherDisplayName": "Friso Vos de Wael",
+      "identityName": "Friso.Legilo",
+      "publisher": "CN=3EF51276-F72D-4BBB-B7EF-5A76563CC427",
+      "publisherDisplayName": "Friso",
       "applicationId": "Legilo",
       "displayName": "Legilo",
       "backgroundColor": "#0969da"
