@@ -1,7 +1,7 @@
 {
   "name": "legilo",
   "productName": "Legilo",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A split-view Markdown reader/editor for Windows",
   "main": "main.js",
   "author": "Friso Vos de Wael <friso.vosdewael@gmail.com>",
@@ -90,6 +90,7 @@
     "@codemirror/view": "^6.34.0",
     "@terrastruct/d2": "^0.1.33",
     "@vscode/markdown-it-katex": "^1.1.2",
+    "docx": "^9.7.1",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
@@ -99,6 +100,7 @@
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.16.0",
+    "pptxgenjs": "^4.0.1",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
   }

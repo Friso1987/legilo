@@ -167,6 +167,8 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Export to HTML…', accelerator: 'CmdOrCtrl+E', click: () => sendMenu('export-html') },
         { label: 'Export to PDF…', click: () => sendMenu('export-pdf') },
+        { label: 'Export to Word…', click: () => sendMenu('export-docx') },
+        { label: 'Export to PowerPoint…', click: () => sendMenu('export-pptx') },
         { type: 'separator' },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: () => sendMenu('print') },
         { label: 'Print Preview', click: () => sendMenu('print-preview') },
@@ -355,6 +357,42 @@ ipcMain.handle('file:export-html', async (_e, { html, defaultName }) => {
   if (result.canceled || !result.filePath) return null;
   await fs.writeFile(result.filePath, html, 'utf8');
   return result.filePath;
+});
+
+// Saves renderer-built binary exports (.docx / .pptx). `data` arrives as a
+// Uint8Array over structured clone.
+const OFFICE_FILTERS = {
+  docx: [{ name: 'Word Document', extensions: ['docx'] }],
+  pptx: [{ name: 'PowerPoint Presentation', extensions: ['pptx'] }],
+};
+
+ipcMain.handle('file:export-office', async (_e, { data, defaultName, kind }) => {
+  const result = await dialog.showSaveDialog(win, {
+    filters: OFFICE_FILTERS[kind] || [{ name: 'All Files', extensions: ['*'] }],
+    defaultPath: defaultName || `export.${kind}`,
+  });
+  if (result.canceled || !result.filePath) return null;
+  await fs.writeFile(result.filePath, Buffer.from(data));
+  return result.filePath;
+});
+
+// Binary file read as a data: URL — the renderer needs image/font bytes for
+// office exports, and file:// resources taint a canvas there.
+const DATA_URL_MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  svg: 'image/svg+xml', webp: 'image/webp', bmp: 'image/bmp',
+  woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf',
+};
+
+ipcMain.handle('file:read-binary', async (_e, filePath) => {
+  try {
+    const buf = await fs.readFile(filePath);
+    const ext = path.extname(filePath).slice(1).toLowerCase();
+    const mime = DATA_URL_MIME[ext] || 'application/octet-stream';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (_) {
+    return null;
+  }
 });
 
 // Loads standalone HTML (as produced by the renderer's export) into a hidden

@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('legilo', {
   saveFile: (filePath, content) => ipcRenderer.invoke('file:save', { filePath, content }),
   exportHtml: (html, defaultName) => ipcRenderer.invoke('file:export-html', { html, defaultName }),
   exportPdf: (html, defaultName, paperSize) => ipcRenderer.invoke('file:export-pdf', { html, defaultName, paperSize }),
+  exportOffice: (data, defaultName, kind) => ipcRenderer.invoke('file:export-office', { data, defaultName, kind }),
+  readFileBinary: (filePath) => ipcRenderer.invoke('file:read-binary', filePath),
   printPreview: (html, paperSize) => ipcRenderer.invoke('file:print-preview', { html, paperSize }),
   confirmUnsaved: (fileName) => ipcRenderer.invoke('dialog:confirm-unsaved', { fileName }),
   closeNow: () => ipcRenderer.invoke('app:close-now'),

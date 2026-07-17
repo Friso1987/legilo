@@ -19,6 +19,7 @@ import TurndownService from 'turndown';
 import { gfm as turndownGfm } from 'turndown-plugin-gfm';
 import mermaid from 'mermaid';
 import { D2 } from '@terrastruct/d2';
+import { exportOfficeDocx, exportOfficePptx } from './export-office.js';
 
 // ---------------------------------------------------------------------------
 // Markdown renderer
@@ -1191,6 +1192,21 @@ async function printDocument() {
   window.print();
 }
 
+// Everything the office exporters need from the app; they render through the
+// same pipeline as the preview so styles and diagrams match.
+function officeExportCtx() {
+  return {
+    app,
+    getContent,
+    docTitle,
+    render: renderMarkdownInto,
+    splitSlides,
+    fitContent,
+    paperSizes: PAPER_SIZES,
+    slideBaseFont: SLIDE_BASE_FONT,
+  };
+}
+
 // Pull the preview/GFM rules out of the app stylesheet so the exported HTML
 // looks the same as the preview pane.
 function getExportCss() {
@@ -1339,6 +1355,8 @@ window.legilo.onMenu(async (action) => {
     case 'save': return saveDocument();
     case 'save-as': return saveDocument({ saveAs: true });
     case 'export-html': return exportToHtml();
+    case 'export-docx': return exportOfficeDocx(officeExportCtx());
+    case 'export-pptx': return exportOfficePptx(officeExportCtx());
     case 'view-split': return applyViewMode('split');
     case 'view-editor': return applyViewMode('editor');
     case 'view-preview': return applyViewMode('preview');
@@ -1504,9 +1522,22 @@ While presenting you can **draw on the slides**: a digital pen just works
 
 ## Looks
 
-**View → Preview Style** restyles the preview (and HTML/PDF exports):
+**View → Preview Style** restyles the preview (and every export):
 GitHub, Book, Minimal, Academic (numbered sections), Slate, Typewriter,
 or Newspaper — or load your own CSS with **Load Custom CSS…**.
+
+---
+
+## Export
+
+**File → Export** turns this document into other formats — each one keeps the
+preview style you picked above:
+
+- **HTML** and **PDF** — styled, with math, code highlighting, and diagrams
+- **Word (.docx)** — a flowing, editable document; \`\\pagebreak\` and page
+  size carry over
+- **PowerPoint (.pptx)** — one slide per \`---\`, laid out like presenter
+  mode. If a slide is too full it's scaled to fit, exactly as Legilo shows it.
 
 ---
 

@@ -61,6 +61,13 @@ Any document is already a slide deck: a `---` line starts a new slide.
 - **`\pagebreak`** forces a new page — in the preview, in print, and in PDF
 - **Print** (`Ctrl+P`), **print preview**, **Export to PDF** and **Export to
   HTML** — all styled, math and code highlighting included
+- **Export to Word** (`.docx`) — a flowing, fully editable document that keeps
+  your active preview style, tables, lists, code, and page breaks; diagrams
+  and math come across as crisp images
+- **Export to PowerPoint** (`.pptx`) — one native slide per `---`, laid out
+  just like presenter mode. Overfull slides are auto-scaled to fit exactly as
+  Legilo shows them, and every text box also gets PowerPoint's own
+  shrink-to-fit — so nothing falls off the edge once you're in PowerPoint
 
 ## 🎨 Make it yours
 
