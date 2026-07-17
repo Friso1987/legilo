@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!-- unsafe-eval/wasm-unsafe-eval + worker blob: are required by the D2
+       diagram engine (WASM + eval'd ELK layout lib in a worker); frame-src for
+       YouTube/Vimeo embeds; data: fonts appear inside rendered diagram SVGs. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: http: https:;" />
+        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; worker-src blob:; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: http: https:; font-src 'self' data:; media-src 'self' file:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com;" />
   <title>Legilo</title>
   <link rel="stylesheet" href="katex/katex.min.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -42,8 +45,14 @@
     <div id="slide-stage">
       <article id="slide" class="markdown-body"></article>
     </div>
+    <canvas id="ink-canvas"></canvas>
     <div id="slide-warn" hidden></div>
     <div id="presenter-hud">
+      <button id="ink-pen" title="Draw on the slide (P) — a digital pen draws without toggling">✎</button>
+      <button id="ink-color" title="Pen colour (C)">●</button>
+      <button id="ink-erase" title="Eraser (E) — or use the pen's eraser end">⌫</button>
+      <button id="ink-clear" title="Clear ink on this slide (X)">✧</button>
+      <span class="hud-sep"></span>
       <button id="slide-prev" title="Previous (←)">‹</button>
       <span id="slide-counter">1 / 1</span>
       <button id="slide-next" title="Next (→)">›</button>

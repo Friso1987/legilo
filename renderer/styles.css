@@ -402,6 +402,17 @@ body.theme-dark #slide-stage { background: #161b22; }
   padding: 4px 12px;
 }
 
+/* ink overlay — sits above the slide, below the HUD (DOM order) */
+#ink-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#ink-canvas.drawing { cursor: crosshair; }
+
 #presenter-hud {
   position: fixed;
   right: 20px;
@@ -414,6 +425,18 @@ body.theme-dark #slide-stage { background: #161b22; }
   opacity: 0.35;
   transition: opacity 0.2s;
   cursor: default;
+}
+
+#presenter-hud .hud-sep {
+  width: 1px;
+  height: 18px;
+  background: #30363d;
+}
+
+#presenter-hud button.active {
+  border-color: #4493f8;
+  background: #10305e;
+  color: #ffffff;
 }
 
 #presenter-hud:hover { opacity: 1; }
@@ -599,6 +622,138 @@ body.style-minimal .markdown-body td { border-left: none; border-right: none; }
 body.style-minimal .markdown-body th { background: transparent; }
 body.style-minimal .markdown-body tr:nth-child(2n) td { background: transparent; }
 
+/* Academic: LaTeX-flavoured serif with auto-numbered sections */
+body.style-academic .markdown-body {
+  font-family: "Palatino Linotype", Palatino, "Book Antiqua", "URW Palladio L", Georgia, serif;
+  font-size: 16.5px;
+  line-height: 1.65;
+  text-align: justify;
+  hyphens: auto;
+  counter-reset: sec;
+}
+
+body.style-academic .markdown-body h1 {
+  border-bottom: none;
+  text-align: center;
+  font-size: 1.7em;
+  margin-bottom: 1.2em;
+}
+
+body.style-academic .markdown-body h2,
+body.style-academic .markdown-body h3 { border-bottom: none; text-align: left; }
+
+body.style-academic .markdown-body h2 { counter-increment: sec; counter-reset: subsec; }
+body.style-academic .markdown-body h2::before { content: counter(sec) ".\2002"; }
+body.style-academic .markdown-body h3 { counter-increment: subsec; }
+body.style-academic .markdown-body h3::before {
+  content: counter(sec) "." counter(subsec) "\2002";
+}
+
+body.style-academic .markdown-body blockquote {
+  font-size: 0.92em;
+  border-left: none;
+  padding: 0 2.5em;
+}
+
+/* Slate: modern sans with accent-coloured headings */
+body.style-slate .markdown-body {
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+
+body.style-slate .markdown-body h1,
+body.style-slate .markdown-body h2,
+body.style-slate .markdown-body h3,
+body.style-slate .markdown-body h4 {
+  color: #0e6bd6;
+  border-bottom: none;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+body.style-slate .markdown-body h2 {
+  padding: 0 0 0 0.55em;
+  border-left: 4px solid #0e6bd6;
+}
+
+body.style-slate .markdown-body blockquote {
+  border-left-color: #0e6bd6;
+  background: rgba(14, 107, 214, 0.06);
+  padding: 0.6em 1em;
+  border-radius: 0 6px 6px 0;
+}
+
+body.style-slate .markdown-body a { font-weight: 600; }
+
+/* Typewriter: monospaced draft look */
+body.style-typewriter .markdown-body {
+  font-family: "Cascadia Code", Consolas, "Courier New", ui-monospace, monospace;
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+body.style-typewriter .markdown-body h1,
+body.style-typewriter .markdown-body h2,
+body.style-typewriter .markdown-body h3 {
+  border-bottom: none;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+body.style-typewriter .markdown-body h1 { font-size: 1.5em; }
+body.style-typewriter .markdown-body h2 { font-size: 1.2em; }
+body.style-typewriter .markdown-body h3 { font-size: 1em; }
+
+body.style-typewriter .markdown-body h2::before,
+body.style-typewriter .markdown-body h3::before { content: "## "; opacity: 0.4; }
+
+body.style-typewriter .markdown-body hr {
+  height: auto;
+  background: none;
+  border: none;
+  text-align: center;
+}
+body.style-typewriter .markdown-body hr::after { content: "* * *"; letter-spacing: 0.4em; }
+
+/* Newspaper: headline serif, rules, and a drop cap on the first paragraph */
+body.style-newspaper .markdown-body {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15.5px;
+  line-height: 1.55;
+  text-align: justify;
+  hyphens: auto;
+}
+
+body.style-newspaper .markdown-body h1 {
+  font-size: 2.4em;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  letter-spacing: -0.02em;
+  border-bottom: 3px double #1f2328;
+  padding-bottom: 0.35em;
+}
+
+body.style-newspaper .markdown-body h2 {
+  font-size: 1.35em;
+  font-weight: 700;
+  font-style: italic;
+  border-bottom: 1px solid #1f2328;
+}
+
+body.style-newspaper .markdown-body h1 + p::first-letter,
+body.style-newspaper .markdown-body h2 + p::first-letter {
+  float: left;
+  font-size: 3.1em;
+  line-height: 0.85;
+  padding: 0.06em 0.12em 0 0;
+  font-weight: 700;
+}
+
+body.theme-dark.style-newspaper .markdown-body h1 { border-bottom-color: #e6edf3; }
+body.theme-dark.style-newspaper .markdown-body h2 { border-bottom-color: #e6edf3; }
+
 /* page breaks (\pagebreak) — dashed marker on screen, real break on paper */
 .markdown-body .page-break {
   break-after: page;
@@ -628,6 +783,88 @@ body.style-minimal .markdown-body tr:nth-child(2n) td { background: transparent;
     margin: 0;
     border: none;
   }
+}
+
+/* ---- diagrams (```mermaid / ```d2) ---- */
+
+/* placeholder while the diagram renders off-thread */
+.markdown-body pre.diagram {
+  margin: 0 0 1em;
+  padding: 16px;
+  border-radius: 6px;
+  background-color: #f6f8fa;
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 85%;
+  opacity: 0.45;
+}
+
+.markdown-body .diagram {
+  margin: 0 0 1em;
+  text-align: center;
+  break-inside: avoid;
+}
+
+.markdown-body .diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-body .diagram-error {
+  text-align: left;
+  border: 1px solid #d1242f55;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.markdown-body .diagram-error-msg {
+  color: #d1242f;
+  font-size: 85%;
+  margin-bottom: 6px;
+}
+
+.markdown-body .diagram-error pre {
+  margin: 0;
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 85%;
+  opacity: 0.7;
+  overflow-x: auto;
+}
+
+/* Slides: cap diagram height in em so fit-to-slide font scaling shrinks
+   diagrams along with the text — decks stay neatly inside the 16:9 card. */
+.slide-card-content .diagram svg,
+#slide .diagram svg {
+  max-height: 13em;
+  width: auto;
+}
+
+/* ---- video embeds (bare YouTube/Vimeo link on its own line) ---- */
+
+.markdown-body .video-embed {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0 0 1em;
+  border: 0;
+  border-radius: 6px;
+  background: #000;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+.markdown-body div.video-embed iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.slide-card-content .video-embed,
+#slide .video-embed {
+  width: auto;
+  height: 12em;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* footnotes */
@@ -680,6 +917,7 @@ body.theme-dark .markdown-body code {
 }
 
 body.theme-dark .markdown-body pre.hljs { background-color: #161b22; }
+body.theme-dark .markdown-body pre.diagram { background-color: #161b22; }
 
 body.theme-dark .markdown-body th,
 body.theme-dark .markdown-body td { border-color: #30363d; }

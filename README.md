@@ -31,6 +31,11 @@ the app.
 - **Everything Markdown**: GitHub-flavored tables, task lists, footnotes,
   fenced code with syntax highlighting — plus **KaTeX math**
   (`$E = mc^2$` and `$$…$$` blocks)
+- **Diagrams**: ` ```mermaid ` and ` ```d2 ` code blocks render as diagrams —
+  flowcharts, sequence diagrams, architecture sketches — live in the preview,
+  on slides, in print, and in every export
+- **Video embeds**: a bare YouTube or Vimeo URL on its own line becomes an
+  embedded player; local `.mp4`/`.webm` files work too
 - Opening an **HTML file converts it to Markdown** automatically
 
 ## 🎤 Present
@@ -38,9 +43,12 @@ the app.
 Any document is already a slide deck: a `---` line starts a new slide.
 
 - **Presenter mode** (`F5`) — fullscreen slides with keyboard/click navigation
+- **Draw on your slides** — a digital pen just works (eraser end included),
+  pressure-sensitive, with a mouse fallback (`P`); rough strokes snap into
+  **perfect lines and circles**, and each slide remembers its ink
 - **Slides layout** in the preview pane, to review your deck while writing
 - Overfull slides **auto-shrink to fit** and show a hint so you know when to
-  split them
+  split them — diagrams and videos scale down with the text
 
 <div align="center">
 <img src="docs/screenshot-presenter.png" width="850" alt="Presenter mode: fullscreen slide with auto-fit warning" />
@@ -56,8 +64,10 @@ Any document is already a slide deck: a `---` line starts a new slide.
 
 ## 🎨 Make it yours
 
-- **Light & dark themes** (`Ctrl+Shift+D`)
-- **Preview styles**: GitHub, Book (serif, print-friendly), or Minimal
+- **Light & dark themes** (`Ctrl+Shift+D`) — diagrams re-render to match
+- **Seven preview styles**: GitHub, Book (serif, print-friendly), Minimal,
+  Academic (auto-numbered sections), Slate, Typewriter, and Newspaper
+  (headline type and drop caps) — exports and PDFs follow the active style
 - **Bring your own CSS** — load any stylesheet targeting `.markdown-body`
 - Window size, theme, layout, and open tabs are remembered between sessions
 
@@ -125,6 +135,7 @@ renderer/          # app shell, styles, generated bundles
 | `Ctrl+Shift+P` | Preview layout: flow / page / slides |
 | `Ctrl+Shift+D` | Dark theme |
 | `F5` | Presenter mode |
+| `P` / `E` / `C` / `X` | While presenting: pen / eraser / pen colour / clear ink |
 
 ## License
 

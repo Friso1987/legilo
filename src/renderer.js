@@ -17,6 +17,8 @@ import markdownItKatex from '@vscode/markdown-it-katex';
 import hljs from 'highlight.js/lib/common';
 import TurndownService from 'turndown';
 import { gfm as turndownGfm } from 'turndown-plugin-gfm';
+import mermaid from 'mermaid';
+import { D2 } from '@terrastruct/d2';
 
 // ---------------------------------------------------------------------------
 // Markdown renderer
@@ -27,6 +29,11 @@ const md = new MarkdownIt({
   linkify: true,
   typographer: true,
   highlight(code, lang) {
+    const l = (lang || '').trim().toLowerCase();
+    if (l === 'mermaid' || l === 'd2') {
+      // Placeholder; hydrateDiagrams() swaps it for the rendered SVG.
+      return `<pre class="diagram" data-lang="${l}">${md.utils.escapeHtml(code)}</pre>`;
+    }
     if (lang && hljs.getLanguage(lang)) {
       try {
         return `<pre class="hljs"><code>${hljs.highlight(code, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
@@ -58,6 +65,106 @@ md.block.ruler.before('paragraph', 'pagebreak', (state, startLine, _endLine, sil
   return true;
 });
 md.renderer.rules.pagebreak = () => '<div class="page-break" aria-label="page break"></div>\n';
+
+// ---------------------------------------------------------------------------
+// Diagrams — ```mermaid and ```d2 fences render to inline SVG
+// ---------------------------------------------------------------------------
+
+mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' });
+
+let d2 = null;          // D2 spins up a WASM worker; create it only when needed
+let diagramSeq = 0;
+// key: lang\0theme\0source → { svg } | { error } | { promise } while rendering
+const diagramCache = new Map();
+
+// Renders are serialized: mermaid's theme is global config, so two renders
+// with different themes (preview vs. export) must not interleave.
+let diagramQueue = Promise.resolve();
+
+const D2_DARK_THEME = 200; // "Dark Mauve"
+
+async function renderDiagramSvg(lang, code, theme) {
+  if (lang === 'mermaid') {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: theme === 'dark' ? 'dark' : 'default',
+    });
+    const id = `legilo-mmd-${++diagramSeq}`;
+    try {
+      const { svg } = await mermaid.render(id, code);
+      return svg;
+    } finally {
+      // mermaid can leave scratch/error nodes in the body on failure
+      document.getElementById(id)?.remove();
+      document.getElementById('d' + id)?.remove();
+    }
+  }
+  if (!d2) d2 = new D2();
+  const compiled = await d2.compile(code);
+  return d2.render(compiled.diagram, {
+    themeID: theme === 'dark' ? D2_DARK_THEME : 0,
+    pad: 16,
+    scale: 1, // natural size with explicit width/height; CSS caps the maximum
+    noXMLTag: true,
+  });
+}
+
+function startDiagramRender(lang, code, theme, key) {
+  if (diagramCache.size > 300) diagramCache.clear(); // editing churns keys
+  const entry = {};
+  const job = () => renderDiagramSvg(lang, code, theme)
+    .then((svg) => { entry.svg = svg; })
+    .catch((err) => { entry.error = String(err?.message || err).trim(); });
+  entry.promise = diagramQueue.then(job, job);
+  diagramQueue = entry.promise;
+  diagramCache.set(key, entry);
+  return entry;
+}
+
+function substituteDiagram(block, entry, lang, code) {
+  const box = document.createElement('div');
+  if (entry.svg != null) {
+    box.className = `diagram diagram-${lang}`;
+    box.innerHTML = entry.svg; // generated locally by mermaid/d2, not user HTML
+  } else {
+    box.className = 'diagram diagram-error';
+    const msg = document.createElement('div');
+    msg.className = 'diagram-error-msg';
+    msg.textContent = `${lang} diagram error: ${entry.error}`;
+    const pre = document.createElement('pre');
+    pre.textContent = code;
+    box.append(msg, pre);
+  }
+  block.replaceWith(box);
+}
+
+// Swaps every `pre.diagram` placeholder in `el` for its rendered SVG.
+// Cached diagrams are substituted synchronously; misses render async and are
+// patched in place when they land (then `onUpdate` fires so layout-sensitive
+// views — page/slides — can re-measure). Resolves when everything settled.
+function hydrateDiagrams(el, theme, onUpdate) {
+  const pending = [];
+  for (const block of el.querySelectorAll('pre.diagram')) {
+    const lang = block.dataset.lang;
+    const code = block.textContent;
+    const key = `${lang}\0${theme}\0${code}`;
+    let entry = diagramCache.get(key);
+    if (entry && !entry.promise) {
+      substituteDiagram(block, entry, lang, code);
+      continue;
+    }
+    if (!entry) entry = startDiagramRender(lang, code, theme, key);
+    block.classList.add('diagram-loading');
+    pending.push(entry.promise.then(() => {
+      delete entry.promise;
+      if (!block.isConnected) return; // view re-rendered meanwhile
+      substituteDiagram(block, entry, lang, code);
+      onUpdate?.();
+    }));
+  }
+  return Promise.all(pending).then(() => {});
+}
 
 // ---------------------------------------------------------------------------
 // DOM handles & app state
@@ -269,19 +376,80 @@ function getContent() {
   return editorView.state.doc.toString();
 }
 
-function renderMarkdownInto(el, src) {
+function activeDocDir() {
+  return activeTab?.filePath
+    ? activeTab.filePath.replaceAll('\\', '/').split('/').slice(0, -1).join('/')
+    : null;
+}
+
+function resolveLocalPath(src, docDir) {
+  if (docDir && src && !/^[a-z][a-z0-9+.-]*:|^\//i.test(src)) {
+    return 'file:///' + encodeURI(`${docDir}/${src}`.replace(/^\//, ''));
+  }
+  return null;
+}
+
+// ---- video embeds: a bare video URL on a line of its own becomes a player ----
+
+function videoEmbedUrl(href) {
+  let m = href.match(/^https?:\/\/(?:www\.|m\.)?(?:youtube(?:-nocookie)?\.com\/(?:watch\?[^#]*v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,20})/i);
+  if (m) {
+    const t = href.match(/[?&](?:t|start)=(\d+)/);
+    return `https://www.youtube-nocookie.com/embed/${m[1]}${t ? `?start=${t[1]}` : ''}`;
+  }
+  m = href.match(/^https?:\/\/(?:www\.)?vimeo\.com\/(\d+)/i);
+  if (m) return `https://player.vimeo.com/video/${m[1]}`;
+  return null;
+}
+
+// A paragraph that is nothing but a bare link (linkify keeps text === URL)
+// becomes an embed; a labeled link like [demo](url) stays a normal link.
+function embedVideos(el, docDir) {
+  for (const a of el.querySelectorAll('p > a')) {
+    const p = a.parentElement;
+    if (p.children.length !== 1 || p.textContent.trim() !== a.textContent.trim()) continue;
+    const href = a.getAttribute('href') || '';
+    if (a.textContent.trim() !== href.trim()) continue;
+
+    const embed = videoEmbedUrl(href);
+    if (embed) {
+      const box = document.createElement('div');
+      box.className = 'video-embed';
+      const frame = document.createElement('iframe');
+      frame.src = embed;
+      frame.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
+      box.appendChild(frame);
+      p.replaceWith(box);
+    } else if (/\.(mp4|webm|ogg|m4v|mov)$/i.test(href)) {
+      const video = document.createElement('video');
+      video.className = 'video-embed';
+      video.controls = true;
+      video.src = resolveLocalPath(href, docDir) || href;
+      p.replaceWith(video);
+    }
+  }
+}
+
+function renderMarkdownInto(el, src, { theme = null, onUpdate = null } = {}) {
   el.innerHTML = md.render(src);
   // Resolve relative image paths against the document's folder so local
   // images (inserted via Insert → Image…) show up in the preview.
-  const docDir = activeTab?.filePath
-    ? activeTab.filePath.replaceAll('\\', '/').split('/').slice(0, -1).join('/')
-    : null;
+  const docDir = activeDocDir();
   for (const img of el.querySelectorAll('img')) {
-    const src2 = img.getAttribute('src') || '';
-    if (docDir && src2 && !/^[a-z][a-z0-9+.-]*:|^\//i.test(src2)) {
-      img.src = 'file:///' + encodeURI(`${docDir}/${src2}`.replace(/^\//, ''));
-    }
+    const resolved = resolveLocalPath(img.getAttribute('src') || '', docDir);
+    if (resolved) img.src = resolved;
   }
+  embedVideos(el, docDir);
+  return hydrateDiagrams(el, theme || app.theme, onUpdate);
+}
+
+// Page and slides layouts measure block heights, so they re-render (debounced)
+// when an async diagram lands; the flow view is patched in place and needs
+// nothing further.
+function schedulePreviewUpdate() {
+  if (app.previewMode === 'flow') return;
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderPreview, 120);
 }
 
 function renderPreview() {
@@ -310,7 +478,9 @@ function renderPaged() {
   scratch.style.cssText =
     `position:absolute;left:-99999px;top:0;width:${PAGE.width - 2 * PAGE.margin}px;`;
   document.body.appendChild(scratch);
-  renderMarkdownInto(scratch, getContent());
+  // Diagram nodes move into the pages below, so async diagrams still land
+  // in place; onUpdate then re-paginates with the real heights.
+  renderMarkdownInto(scratch, getContent(), { onUpdate: schedulePreviewUpdate });
 
   previewEl.innerHTML = '';
   let pageContent = null;
@@ -385,7 +555,7 @@ function renderSlidesPreview() {
     body.className = 'slide-card-content markdown-body';
     card.appendChild(body);
     previewEl.appendChild(card);
-    renderMarkdownInto(body, part.text);
+    renderMarkdownInto(body, part.text, { onUpdate: schedulePreviewUpdate });
     const scale = fitContent(body, card.clientHeight - 96, SLIDE_BASE_FONT);
     if (scale < 1) {
       card.classList.add('overfull');
@@ -447,6 +617,7 @@ function applyTheme(theme) {
   editorView.dispatch({ effects: themeCompartment.reconfigure(editorThemeExt()) });
   btnTheme.querySelector('.theme-label').textContent = theme === 'dark' ? 'Light' : 'Dark';
   window.legilo.setPref('theme', theme);
+  renderPreview(); // diagram SVGs are baked per-theme
 }
 
 const VIEW_LABELS = { split: 'Split', editor: 'Editor', preview: 'Preview' };
@@ -462,7 +633,7 @@ function applyViewMode(mode) {
 
 // ---- preview styles: built-in presets + user-supplied CSS ----
 
-const PREVIEW_STYLES = ['github', 'book', 'minimal'];
+const PREVIEW_STYLES = ['github', 'book', 'minimal', 'academic', 'slate', 'typewriter', 'newspaper'];
 
 function applyPreviewStyle(style) {
   app.previewStyle = style;
@@ -584,7 +755,9 @@ function slideForCursor() {
 }
 
 function renderSlide() {
-  renderMarkdownInto(slideEl, slides[slideIndex].text);
+  renderMarkdownInto(slideEl, slides[slideIndex].text, {
+    onUpdate: () => { if (presenting) renderSlide(); }, // re-fit once diagrams land
+  });
   slideCounter.textContent = `${slideIndex + 1} / ${slides.length}`;
   // Shrink overflowing slides so nothing falls off the edge, and tell the
   // presenter about it so they know to split the slide.
@@ -602,11 +775,13 @@ function fitSlide() {
   // Stage has a fixed 960x540 design size; scale it to the viewport.
   const scale = Math.min(window.innerWidth / 1020, window.innerHeight / 640);
   slideStage.style.transform = `scale(${scale})`;
+  resizeInkCanvas();
 }
 
 function gotoSlide(idx) {
   slideIndex = Math.min(slides.length - 1, Math.max(0, idx));
   renderSlide();
+  redrawInk();
 }
 
 function enterPresenter() {
@@ -641,6 +816,11 @@ document.addEventListener('keydown', (e) => {
     case 'Home': e.preventDefault(); gotoSlide(0); break;
     case 'End': e.preventDefault(); gotoSlide(slides.length - 1); break;
     case 'Escape': e.preventDefault(); exitPresenter(); break;
+    // ink
+    case 'p': case 'P': e.preventDefault(); setInkMode(ink.mode === 'pen' ? 'off' : 'pen'); break;
+    case 'e': case 'E': e.preventDefault(); setInkMode(ink.mode === 'erase' ? 'off' : 'erase'); break;
+    case 'c': case 'C': e.preventDefault(); cycleInkColor(); break;
+    case 'x': case 'X': e.preventDefault(); ink.strokes.delete(slideIndex); redrawInk(); break;
   }
 }, true);
 
@@ -651,11 +831,246 @@ document.getElementById('presenter-exit').addEventListener('click', exitPresente
 // Click on the slide advances; click on the left fifth goes back.
 presenterEl.addEventListener('click', (e) => {
   if (e.target.closest('#presenter-hud')) return;
+  if (inkConsumesClick()) return; // drawing, not navigating
   if (e.clientX < window.innerWidth / 5) gotoSlide(slideIndex - 1);
   else gotoSlide(slideIndex + 1);
 });
 
 window.addEventListener('resize', () => { if (presenting) fitSlide(); });
+
+// ---------------------------------------------------------------------------
+// Presenter ink — draw on slides with a digital pen (or mouse via Pen mode)
+//
+// A stylus (pointerType "pen") draws immediately; its eraser end erases.
+// Mouse/touch users toggle the ✎ button. Strokes live in slide coordinates,
+// so they stick to the slide across window resizes, and are kept per slide
+// for the whole app session. Rough strokes snap to perfect lines & circles.
+// ---------------------------------------------------------------------------
+
+const inkCanvas = document.getElementById('ink-canvas');
+const inkCtx = inkCanvas.getContext('2d');
+const btnInkPen = document.getElementById('ink-pen');
+const btnInkColor = document.getElementById('ink-color');
+const btnInkErase = document.getElementById('ink-erase');
+const btnInkClear = document.getElementById('ink-clear');
+
+const INK_COLORS = ['#e5484d', '#2f6feb', '#1a7f37', '#e8a013', '#111111'];
+const INK_SIZE = 3;        // base stroke width in slide units
+const ERASE_RADIUS = 14;   // slide units
+
+const ink = {
+  mode: 'off',             // 'off' | 'pen' | 'erase' — a stylus always draws
+  colorIdx: 0,
+  strokes: new Map(),      // slideIndex → [{ color, pts: [{x, y, p}] }]
+  current: null,
+  drewSinceDown: false,
+};
+
+function inkStrokes() {
+  if (!ink.strokes.has(slideIndex)) ink.strokes.set(slideIndex, []);
+  return ink.strokes.get(slideIndex);
+}
+
+// Maps between screen pixels and the slide stage's 960×540 design space.
+function stageMap() {
+  const r = slideStage.getBoundingClientRect();
+  const scale = r.width / 960 || 1;
+  return {
+    scale,
+    from: (e) => ({ x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, p: e.pressure || 0.5 }),
+    toX: (x) => r.left + x * scale,
+    toY: (y) => r.top + y * scale,
+  };
+}
+
+function resizeInkCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  inkCanvas.width = Math.round(window.innerWidth * dpr);
+  inkCanvas.height = Math.round(window.innerHeight * dpr);
+  inkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  redrawInk();
+}
+
+function redrawInk() {
+  inkCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  const m = stageMap();
+  for (const s of ink.strokes.get(slideIndex) || []) drawInkStroke(s, m);
+  if (ink.current) drawInkStroke(ink.current, m);
+}
+
+function drawInkStroke(s, m) {
+  const pts = s.pts;
+  if (pts.length === 0) return;
+  inkCtx.strokeStyle = s.color;
+  inkCtx.lineCap = 'round';
+  inkCtx.lineJoin = 'round';
+  if (pts.length === 1) {
+    inkCtx.lineWidth = INK_SIZE * m.scale;
+    inkCtx.beginPath();
+    inkCtx.moveTo(m.toX(pts[0].x), m.toY(pts[0].y));
+    inkCtx.lineTo(m.toX(pts[0].x) + 0.1, m.toY(pts[0].y));
+    inkCtx.stroke();
+    return;
+  }
+  // Per-segment width follows pen pressure; round caps hide the joints.
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1]; const b = pts[i];
+    inkCtx.lineWidth = INK_SIZE * (0.5 + (a.p + b.p) * 0.7) * m.scale;
+    inkCtx.beginPath();
+    inkCtx.moveTo(m.toX(a.x), m.toY(a.y));
+    inkCtx.lineTo(m.toX(b.x), m.toY(b.y));
+    inkCtx.stroke();
+  }
+}
+
+// ---- shape snapping: straighten near-lines, perfect near-circles ----
+
+function snapStroke(s) {
+  const pts = s.pts;
+  if (pts.length < 8) return;
+  const a = pts[0]; const b = pts[pts.length - 1];
+  const chord = Math.hypot(b.x - a.x, b.y - a.y);
+
+  // Line: every point close to the start→end segment.
+  if (chord > 40) {
+    let maxDev = 0;
+    for (const p of pts) {
+      const t = Math.max(0, Math.min(1,
+        ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (chord * chord)));
+      maxDev = Math.max(maxDev, Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y))));
+    }
+    if (maxDev < Math.max(4, chord * 0.04)) {
+      const p = pts.reduce((acc, q) => acc + q.p, 0) / pts.length;
+      s.pts = [{ ...a, p }, { ...b, p }];
+      return;
+    }
+  }
+
+  // Circle: radius from the centroid is nearly constant and the stroke
+  // sweeps (almost) all the way around.
+  const cx = pts.reduce((acc, p) => acc + p.x, 0) / pts.length;
+  const cy = pts.reduce((acc, p) => acc + p.y, 0) / pts.length;
+  const radii = pts.map((p) => Math.hypot(p.x - cx, p.y - cy));
+  const r = radii.reduce((acc, v) => acc + v, 0) / radii.length;
+  if (r < 15) return;
+  const dev = Math.sqrt(radii.reduce((acc, v) => acc + (v - r) ** 2, 0) / radii.length);
+  let sweep = 0;
+  for (let i = 1; i < pts.length; i++) {
+    let d = Math.atan2(pts[i].y - cy, pts[i].x - cx) - Math.atan2(pts[i - 1].y - cy, pts[i - 1].x - cx);
+    if (d > Math.PI) d -= 2 * Math.PI;
+    if (d < -Math.PI) d += 2 * Math.PI;
+    sweep += d;
+  }
+  if (dev / r < 0.16 && Math.abs(sweep) > 4.8 && chord < r) {
+    const p = pts.reduce((acc, q) => acc + q.p, 0) / pts.length;
+    s.pts = Array.from({ length: 49 }, (_, i) => {
+      const t = (i / 48) * 2 * Math.PI;
+      return { x: cx + r * Math.cos(t), y: cy + r * Math.sin(t), p };
+    });
+  }
+}
+
+// ---- erasing: drop any stroke the eraser path comes near ----
+
+function distToSegment(p, a, b) {
+  const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  const t = len2 ? Math.max(0, Math.min(1,
+    ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / len2)) : 0;
+  return Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y)));
+}
+
+function eraseAt(pt) {
+  const strokes = inkStrokes();
+  const keep = strokes.filter((s) => {
+    if (s.pts.length === 1) return Math.hypot(s.pts[0].x - pt.x, s.pts[0].y - pt.y) > ERASE_RADIUS;
+    for (let i = 1; i < s.pts.length; i++) {
+      if (distToSegment(pt, s.pts[i - 1], s.pts[i]) <= ERASE_RADIUS) return false;
+    }
+    return true;
+  });
+  if (keep.length !== strokes.length) {
+    ink.strokes.set(slideIndex, keep);
+    redrawInk();
+  }
+}
+
+// ---- pointer handling ----
+
+function pointerErases(e) {
+  // buttons bit 32 = a stylus' eraser end
+  return ink.mode === 'erase' || (e.pointerType === 'pen' && (e.buttons & 32) !== 0);
+}
+
+inkCanvas.addEventListener('pointerdown', (e) => {
+  const draws = e.pointerType === 'pen' || ink.mode !== 'off';
+  if (!draws || e.target.closest('#presenter-hud')) return;
+  e.preventDefault();
+  ink.drewSinceDown = true;
+  try { inkCanvas.setPointerCapture(e.pointerId); } catch (_) { /* stale pointer id */ }
+  const m = stageMap();
+  if (pointerErases(e)) {
+    ink.current = { erase: true };
+    eraseAt(m.from(e));
+    return;
+  }
+  ink.current = { color: INK_COLORS[ink.colorIdx], pts: [m.from(e)] };
+  redrawInk();
+});
+
+inkCanvas.addEventListener('pointermove', (e) => {
+  if (!ink.current) return;
+  const m = stageMap();
+  const coalesced = e.getCoalescedEvents?.();
+  const events = coalesced?.length ? coalesced : [e];
+  if (ink.current.erase) {
+    for (const ev of events) eraseAt(m.from(ev));
+    return;
+  }
+  for (const ev of events) ink.current.pts.push(m.from(ev));
+  redrawInk();
+});
+
+function finishInkStroke() {
+  if (!ink.current) return;
+  if (!ink.current.erase) {
+    snapStroke(ink.current);
+    inkStrokes().push(ink.current);
+  }
+  ink.current = null;
+  redrawInk();
+}
+
+inkCanvas.addEventListener('pointerup', finishInkStroke);
+inkCanvas.addEventListener('pointercancel', () => { ink.current = null; redrawInk(); });
+
+// Swallow the click that follows a drawing gesture (and all clicks while a
+// draw mode is active — navigation is keyboard/HUD then).
+function inkConsumesClick() {
+  const drew = ink.drewSinceDown || ink.mode !== 'off';
+  ink.drewSinceDown = false;
+  return drew;
+}
+
+// ---- ink HUD ----
+
+function setInkMode(mode) {
+  ink.mode = mode;
+  btnInkPen.classList.toggle('active', mode === 'pen');
+  btnInkErase.classList.toggle('active', mode === 'erase');
+  inkCanvas.classList.toggle('drawing', mode !== 'off');
+}
+
+function cycleInkColor() {
+  ink.colorIdx = (ink.colorIdx + 1) % INK_COLORS.length;
+  btnInkColor.style.color = INK_COLORS[ink.colorIdx];
+  if (ink.mode === 'erase') setInkMode('pen');
+}
+
+btnInkPen.addEventListener('click', () => setInkMode(ink.mode === 'pen' ? 'off' : 'pen'));
+btnInkErase.addEventListener('click', () => setInkMode(ink.mode === 'erase' ? 'off' : 'erase'));
+btnInkColor.addEventListener('click', cycleInkColor);
+btnInkClear.addEventListener('click', () => { ink.strokes.delete(slideIndex); redrawInk(); });
+btnInkColor.style.color = INK_COLORS[ink.colorIdx];
 
 // ---------------------------------------------------------------------------
 // File operations
@@ -724,9 +1139,10 @@ function docTitle() {
 // Standalone light-theme HTML of the current document; used for HTML export,
 // PDF export, and printing. Renders via the DOM so relative image paths get
 // resolved the same way as in the preview.
-function buildStandaloneHtml() {
+async function buildStandaloneHtml() {
   const scratch = document.createElement('div');
-  renderMarkdownInto(scratch, getContent());
+  // Exports are always light-theme; wait for diagrams so the SVGs are inlined.
+  await renderMarkdownInto(scratch, getContent(), { theme: 'light' });
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -747,15 +1163,15 @@ ${scratch.innerHTML}
 }
 
 async function exportToHtml() {
-  await window.legilo.exportHtml(buildStandaloneHtml(), `${docTitle()}.html`);
+  await window.legilo.exportHtml(await buildStandaloneHtml(), `${docTitle()}.html`);
 }
 
 // Print from the visible window: fill #print-root, force the light theme,
 // and let @media print CSS hide the app chrome. (Printing via a hidden
 // window is unreliable on Windows — the dialog never appears.)
-function printDocument() {
+async function printDocument() {
   const printRoot = document.getElementById('print-root');
-  renderMarkdownInto(printRoot, getContent());
+  await renderMarkdownInto(printRoot, getContent(), { theme: 'light' });
   const wasDark = document.body.classList.contains('theme-dark');
   if (wasDark) {
     document.body.classList.replace('theme-dark', 'theme-light');
@@ -867,6 +1283,18 @@ async function doInsert(kind) {
       const text = `${pre}\`\`\`javascript\ncode\n\`\`\`\n`;
       return insertSnippet(text, pre.length + 3, 'javascript'.length); // select the language
     }
+    case 'mermaid': {
+      const body = 'flowchart LR\n  A[Start] --> B{Decision}\n  B -->|yes| C[Do it]\n  B -->|no| D[Skip it]';
+      return insertSnippet(`${pre}\`\`\`mermaid\n${body}\n\`\`\`\n`, 0, 0);
+    }
+    case 'd2': {
+      const body = 'user: User\napp: Legilo\nuser -> app: writes markdown\napp -> user: renders preview';
+      return insertSnippet(`${pre}\`\`\`d2\n${body}\n\`\`\`\n`, 0, 0);
+    }
+    case 'video': {
+      const url = 'https://youtu.be/VIDEO_ID';
+      return insertSnippet(`${pre}${url}\n`, pre.length + url.length - 'VIDEO_ID'.length, 'VIDEO_ID'.length);
+    }
     case 'table':
       return insertSnippet(
         `${pre}| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n| cell | cell | cell |\n| cell | cell | cell |\n`,
@@ -893,8 +1321,8 @@ window.legilo.onMenu(async (action) => {
   if (action.startsWith('insert:')) return doInsert(action.slice(7));
   switch (action) {
     case 'print': return printDocument();
-    case 'print-preview': return window.legilo.printPreview(buildStandaloneHtml(), app.paperSize);
-    case 'export-pdf': return window.legilo.exportPdf(buildStandaloneHtml(), `${docTitle()}.pdf`, app.paperSize);
+    case 'print-preview': return window.legilo.printPreview(await buildStandaloneHtml(), app.paperSize);
+    case 'export-pdf': return window.legilo.exportPdf(await buildStandaloneHtml(), `${docTitle()}.pdf`, app.paperSize);
     case 'new': return newTab();
     case 'open': return openDocument();
     case 'close-tab': return closeTab(activeTab);
@@ -913,9 +1341,11 @@ window.legilo.onMenu(async (action) => {
       editorView.focus();
       return openSearchPanel(editorView);
     }
-    case 'style-github': return applyPreviewStyle('github');
-    case 'style-book': return applyPreviewStyle('book');
-    case 'style-minimal': return applyPreviewStyle('minimal');
+    default:
+      if (action.startsWith('style-') && PREVIEW_STYLES.includes(action.slice(6))) {
+        return applyPreviewStyle(action.slice(6));
+      }
+      break;
     case 'custom-css-load': return loadCustomCss();
     case 'custom-css-clear': return setCustomCss('');
     case 'preview-flow': return applyPreviewMode('flow');
@@ -1013,6 +1443,34 @@ $$
 Q = \\frac{\\Delta S}{\\Delta t} + \\sum_{i} q_i
 $$
 
+## Diagrams
+
+Fenced code blocks with the language \`mermaid\` or \`d2\` render as
+diagrams (also in slides, print, and exports — try the Insert menu):
+
+\`\`\`mermaid
+flowchart LR
+  A[Write markdown] --> B{Happy?}
+  B -->|yes| C[Present it]
+  B -->|no| A
+\`\`\`
+
+\`\`\`d2
+editor: Editor
+preview: Preview
+editor -> preview: live render
+\`\`\`
+
+## Video
+
+A bare YouTube or Vimeo link on a line of its own becomes an embedded
+player (a labeled [link](https://youtu.be/dQw4w9WgXcQ) stays a link):
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+Local video files work too — link a \`.mp4\`/\`.webm\` file with the path as
+its own text, alone on a line: \`[clip.mp4](clip.mp4)\`
+
 \\pagebreak
 
 ## Page breaks
@@ -1028,6 +1486,19 @@ Insert menu.
 
 A \`---\` line starts a new slide for **presenter mode**: press **F5**
 to present this document, ←/→ to navigate, Esc to leave.
+
+While presenting you can **draw on the slides**: a digital pen just works
+(its eraser end erases); with a mouse, toggle ✎ in the corner or press
+**P**. Sloppy circles and lines snap into perfect ones. **E** = eraser,
+**C** = pen colour, **X** = clear the slide.
+
+---
+
+## Looks
+
+**View → Preview Style** restyles the preview (and HTML/PDF exports):
+GitHub, Book, Minimal, Academic (numbered sections), Slate, Typewriter,
+or Newspaper — or load your own CSS with **Load Custom CSS…**.
 
 ---
 
@@ -1045,6 +1516,7 @@ to present this document, ←/→ to navigate, Esc to leave.
 | Ctrl+Shift+D | Dark theme on/off |
 | Ctrl+1 / 2 / 3 | Split / editor / preview |
 | F5 | Presenter mode |
+| P / E / C / X | While presenting: pen / eraser / colour / clear ink |
 `;
 
 const GUIDE_LABEL = 'Markdown Guide';
