@@ -382,6 +382,7 @@ const DATA_URL_MIME = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   svg: 'image/svg+xml', webp: 'image/webp', bmp: 'image/bmp',
   woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf',
+  mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
 };
 
 ipcMain.handle('file:read-binary', async (_e, filePath) => {

@@ -67,7 +67,9 @@ Any document is already a slide deck: a `---` line starts a new slide.
 - **Export to PowerPoint** (`.pptx`) — one native slide per `---`, laid out
   just like presenter mode. Overfull slides are auto-scaled to fit exactly as
   Legilo shows them, and every text box also gets PowerPoint's own
-  shrink-to-fit — so nothing falls off the edge once you're in PowerPoint
+  shrink-to-fit — so nothing falls off the edge once you're in PowerPoint.
+  YouTube embeds become native online-video objects and local `.mp4` files
+  are embedded as playable media
 
 ## 🎨 Make it yours
 

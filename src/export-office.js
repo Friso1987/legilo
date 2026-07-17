@@ -840,6 +840,30 @@ async function pptxBlock(slide, el, cardRect, wctx) {
 
   if (cls.contains('video-embed') || tag === 'VIDEO') {
     const href = videoHref(el);
+    // YouTube → a native PowerPoint online-video object (nocookie embeds are
+    // rewritten: PowerPoint only recognizes the youtube.com domain).
+    if (/youtube(-nocookie)?\.com\/embed\//i.test(href)) {
+      slide.addMedia({
+        type: 'online', link: href.replace('youtube-nocookie.com', 'youtube.com'),
+        x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+      });
+      return;
+    }
+    // Local video file → embed the bytes as playable media. PowerPoint plays
+    // mp4/m4v/mov natively; webm and friends fall through to the link box.
+    const videoEl = tag === 'VIDEO' ? el : el.querySelector('video');
+    const src = videoEl?.currentSrc || videoEl?.src || '';
+    if (src.startsWith('file:') && /\.(mp4|m4v|mov)$/i.test(src)) {
+      const dataUrl = await window.legilo.readFileBinary(fileUrlToPath(src));
+      if (dataUrl?.startsWith('data:video/')) {
+        slide.addMedia({
+          type: 'video', data: dataUrl.slice(5), // "video/mp4;base64,…"
+          x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+        });
+        return;
+      }
+    }
+    // Fallback (Vimeo, webm, unreadable file): a linked placeholder box.
     slide.addShape('roundRect', {
       x: rect.x, y: rect.y, w: rect.w, h: rect.h,
       fill: { color: '000000' }, line: { type: 'none' }, rectRadius: 0.06,

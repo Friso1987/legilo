@@ -1,7 +1,7 @@
 {
   "name": "legilo",
   "productName": "Legilo",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A split-view Markdown reader/editor for Windows",
   "main": "main.js",
   "author": "Friso Vos de Wael <friso.vosdewael@gmail.com>",
