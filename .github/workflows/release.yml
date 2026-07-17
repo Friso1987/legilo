@@ -6,6 +6,10 @@ on:
       - "v*"
   workflow_dispatch:
 
+# electron-builder creates the draft GitHub release on tag builds
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard, session } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const Store = require('electron-store');
@@ -452,6 +452,17 @@ ipcMain.on('session:set', (_e, session) => {
 // ---------- lifecycle ----------
 
 app.whenReady().then(() => {
+  // YouTube's embedded player refuses to play without a Referer header
+  // (error 153), and a file://-loaded page sends none — add one for the
+  // embed frames. Vimeo gets the same treatment for referer-locked videos.
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['https://www.youtube-nocookie.com/embed/*', 'https://player.vimeo.com/video/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = 'https://legilo.app/';
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
+
   buildMenu();
   createWindow();
 
