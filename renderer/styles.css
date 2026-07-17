@@ -402,16 +402,22 @@ body.theme-dark #slide-stage { background: #161b22; }
   padding: 4px 12px;
 }
 
-/* ink overlay — sits above the slide, below the HUD (DOM order) */
+/* ink overlay — sits above the slide, below the HUD (DOM order).
+   Click-transparent by default so slide content (video players, links)
+   stays clickable; an active draw mode makes it catch the pointer. */
 #ink-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
   touch-action: none;
 }
 
-#ink-canvas.drawing { cursor: crosshair; }
+#ink-canvas.drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
 
 #presenter-hud {
   position: fixed;

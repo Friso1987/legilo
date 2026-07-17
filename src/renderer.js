@@ -831,6 +831,7 @@ document.getElementById('presenter-exit').addEventListener('click', exitPresente
 // Click on the slide advances; click on the left fifth goes back.
 presenterEl.addEventListener('click', (e) => {
   if (e.target.closest('#presenter-hud')) return;
+  if (e.target.closest('a, .video-embed')) return; // interact, don't navigate
   if (inkConsumesClick()) return; // drawing, not navigating
   if (e.clientX < window.innerWidth / 5) gotoSlide(slideIndex - 1);
   else gotoSlide(slideIndex + 1);
@@ -1001,12 +1002,19 @@ function pointerErases(e) {
   return ink.mode === 'erase' || (e.pointerType === 'pen' && (e.buttons & 32) !== 0);
 }
 
-inkCanvas.addEventListener('pointerdown', (e) => {
+// Pointer listeners live on the presenter, not the canvas: the canvas is
+// click-transparent while no draw mode is on (so video players and links in
+// slides stay usable), yet a stylus can still start drawing anywhere — the
+// events bubble up from whatever slide element it touches. (Starting a
+// stroke on top of an embedded video needs the ✎ mode: the iframe swallows
+// pointer events before they can bubble.)
+presenterEl.addEventListener('pointerdown', (e) => {
   const draws = e.pointerType === 'pen' || ink.mode !== 'off';
   if (!draws || e.target.closest('#presenter-hud')) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
   e.preventDefault();
   ink.drewSinceDown = true;
-  try { inkCanvas.setPointerCapture(e.pointerId); } catch (_) { /* stale pointer id */ }
+  try { presenterEl.setPointerCapture(e.pointerId); } catch (_) { /* stale pointer id */ }
   const m = stageMap();
   if (pointerErases(e)) {
     ink.current = { erase: true };
@@ -1017,7 +1025,7 @@ inkCanvas.addEventListener('pointerdown', (e) => {
   redrawInk();
 });
 
-inkCanvas.addEventListener('pointermove', (e) => {
+presenterEl.addEventListener('pointermove', (e) => {
   if (!ink.current) return;
   const m = stageMap();
   const coalesced = e.getCoalescedEvents?.();
@@ -1040,8 +1048,8 @@ function finishInkStroke() {
   redrawInk();
 }
 
-inkCanvas.addEventListener('pointerup', finishInkStroke);
-inkCanvas.addEventListener('pointercancel', () => { ink.current = null; redrawInk(); });
+presenterEl.addEventListener('pointerup', finishInkStroke);
+presenterEl.addEventListener('pointercancel', () => { ink.current = null; redrawInk(); });
 
 // Swallow the click that follows a drawing gesture (and all clicks while a
 // draw mode is active — navigation is keyboard/HUD then).
