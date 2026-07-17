@@ -31,7 +31,7 @@ the app.
 - **Everything Markdown**: GitHub-flavored tables, task lists, footnotes,
   fenced code with syntax highlighting — plus **KaTeX math**
   (`$E = mc^2$` and `$$…$$` blocks)
-- **Diagrams**: ` ```mermaid ` and ` ```d2 ` code blocks render as diagrams —
+- **Diagrams**: fenced code blocks tagged `mermaid` or `d2` render as diagrams —
   flowcharts, sequence diagrams, architecture sketches — live in the preview,
   on slides, in print, and in every export
 - **Video embeds**: a bare YouTube or Vimeo URL on its own line becomes an
