@@ -20,7 +20,7 @@ text boxes around.
 
 </div>
 
-## Why teachers like it
+## 💡 Why teachers like it
 
 You type in plain Markdown, so preparing a lesson feels like writing notes
 rather than building a presentation. That same file does three jobs: it's your
@@ -31,7 +31,7 @@ teach. The slides go on the projector, but your own screen keeps the editor
 open, so you can fix a typo, jump to a question, or add an example on the spot,
 and the class sees it right away.
 
-## Prepare the lesson
+## ✍️ Prepare the lesson
 
 A split view shows your Markdown on the left and a live preview on the right,
 with synchronized scrolling and a divider you can drag.
@@ -54,7 +54,7 @@ Tabs reopen where you left off, and there's an unsaved-changes guard so you
 don't lose work. Start a new slide by putting a `---` line between sections,
 and use the Slides preview layout to flip through the deck while you write.
 
-## Teach it
+## 🎤 Teach it
 
 Press **F5** to present fullscreen, or **Shift+F5** to present on a second
 screen. Move through the deck with the arrow keys, space, a clicker, or the
@@ -123,7 +123,7 @@ and never reach the projector.
 <img src="docs/screenshot-presenter.png" width="850" alt="Presenter mode: fullscreen slide with auto-fit warning" />
 </div>
 
-## Hand it out
+## 📄 Hand it out
 
 The same document exports to whatever you need, keeping your preview style,
 tables, lists, code and page breaks. Diagrams and maths come across as crisp
@@ -139,7 +139,7 @@ images.
   become native online-video objects and local `.mp4` files are embedded as
   playable media.
 
-## Make it yours
+## 🎨 Make it yours
 
 * Light and dark themes (`Ctrl+Shift+D`), and diagrams re-render to match
 * Seven preview styles: GitHub, Book (serif, print-friendly), Minimal, Academic
