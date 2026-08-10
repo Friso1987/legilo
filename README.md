@@ -51,8 +51,12 @@ with synchronized scrolling and a divider you can drag.
   across cleanly
 
 Tabs reopen where you left off, and there's an unsaved-changes guard so you
-don't lose work. Start a new slide by putting a `---` line between sections,
-and use the Slides preview layout to flip through the deck while you write.
+don't lose work. **Auto-save** (on by default, under File) writes titled
+documents to disk as you type, and Legilo keeps a recovery copy of every tab,
+including untitled drafts, so if the app ever closes unexpectedly your work
+comes back the next time you open it. Start a new slide by putting a `---` line
+between sections, and use the Slides preview layout to flip through the deck
+while you write.
 
 ## 🎤 Teach it
 

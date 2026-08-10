@@ -279,6 +279,7 @@ function activateTab(tab) {
     return;
   }
   if (activeTab) {
+    flushTab(activeTab); // save the tab we're leaving if it's a dirty file
     activeTab.state = editorView.state;
     activeTab.previewScroll = previewPane.scrollTop;
   }
@@ -291,6 +292,7 @@ function activateTab(tab) {
   renderTabBar();
   updateTitle();
   saveSession();
+  persistRecovery();
   editorView.focus();
 }
 
@@ -312,6 +314,7 @@ async function closeTab(tab) {
     renderTabBar();
     saveSession();
   }
+  persistRecovery();
   return true;
 }
 
@@ -326,6 +329,57 @@ function saveSession() {
     files: tabs.filter((t) => t.filePath).map((t) => t.filePath),
     active: activeTab?.filePath || null,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Auto-save & crash recovery
+//
+// Auto-save writes titled documents to disk after a short idle so you never
+// lose work by forgetting to save. Recovery snapshots every open tab's text
+// (including untitled drafts) as you type; it's cleared on a clean close, so it
+// only survives — and is restored — after a crash or force-quit.
+// ---------------------------------------------------------------------------
+
+let autoSaveEnabled = true;
+let autoSaveTimer = null;
+
+function scheduleAutoSave() {
+  if (AUDIENCE) return;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(autoSaveTick, 1500);
+}
+
+function autoSaveTick() {
+  persistRecovery();
+  if (autoSaveEnabled) flushTab(activeTab);
+}
+
+// Writes a titled, dirty tab straight to its own file (no dialog).
+async function flushTab(tab) {
+  if (!autoSaveEnabled || !tab || !tab.filePath || !tab.dirty) return;
+  const content = tab === activeTab ? getContent() : tab.state.doc.toString();
+  try {
+    if (await window.legilo.saveFile(tab.filePath, content)) {
+      tab.dirty = false;
+      renderTabBar();
+      if (tab === activeTab) updateTitle();
+      persistRecovery();
+    }
+  } catch (_) { /* keep the dirty flag; the recovery copy still holds the text */ }
+}
+
+function persistRecovery() {
+  if (AUDIENCE) return;
+  const snapshot = tabs
+    .filter((t) => !(t.label === GUIDE_LABEL && !t.dirty)) // skip the pristine guide
+    .map((t) => ({
+      filePath: t.filePath,
+      label: t.label,
+      dirty: t.dirty,
+      active: t === activeTab,
+      content: t === activeTab ? getContent() : t.state.doc.toString(),
+    }));
+  window.legilo.setRecovery({ tabs: snapshot });
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +421,7 @@ function createEditorState(content) {
           markDirty();
           clearTimeout(renderTimer);
           renderTimer = setTimeout(previewTick, 120);
+          scheduleAutoSave();
         }
       }),
     ],
@@ -1796,6 +1851,8 @@ window.legilo.onMenu(async (action) => {
     case 'present-dual': return enterDualPresent();
     case 'audience-ready': return pushAudienceState();
     case 'audience-closed': return dualPresenting ? exitDualPresent() : undefined;
+    case 'autosave-on': autoSaveEnabled = true; flushTab(activeTab); return;
+    case 'autosave-off': autoSaveEnabled = false; return;
     case 'show-guide': return showGuide();
   }
 });
@@ -1804,11 +1861,15 @@ window.legilo.onCloseRequest(async () => {
   for (const tab of [...tabs]) {
     if (!tab.dirty) continue;
     activateTab(tab);
+    // With auto-save on, titled docs are written silently; only untitled
+    // drafts still need the Save / Don't Save prompt.
+    if (autoSaveEnabled && tab.filePath) { await flushTab(tab); continue; }
     const choice = await window.legilo.confirmUnsaved(tabName(tab));
     if (choice === 'cancel') return; // abort close
     if (choice === 'save' && !(await saveDocument())) return;
   }
   saveSession();
+  window.legilo.clearRecovery(); // clean shutdown → nothing left to recover
   window.legilo.closeNow();
 });
 
@@ -1975,6 +2036,15 @@ preview style you picked above:
 
 ---
 
+## Never lose work
+
+**Auto-save** (on by default, under **File → Auto-save**) writes saved documents
+to disk as you type. And whether or not it's on, Legilo keeps a recovery copy
+of every open tab — including untitled drafts — so if the app ever closes
+unexpectedly, your work is waiting for you the next time you open it.
+
+---
+
 ## Handy shortcuts
 
 | Shortcut | Action |
@@ -2014,18 +2084,42 @@ async function init() {
     if (css !== null) setCustomCss(css);
   }
   applyPreviewMode(prefs.previewMode || 'flow');
+  autoSaveEnabled = prefs.autoSave !== false;
 
-  const session = await window.legilo.getSession();
-  for (const filePath of session?.files || []) {
-    const content = await window.legilo.readFile(filePath);
-    if (content !== null) newTab({ filePath, content });
+  const recovery = await window.legilo.getRecovery();
+  if (recovery?.tabs?.length) {
+    // Unclean shutdown last time: bring every tab back exactly as it was,
+    // including unsaved edits and untitled drafts.
+    let activeRestored = null;
+    for (const t of recovery.tabs) {
+      let content = t.content ?? '';
+      // A titled tab that was clean can be refreshed from disk (picking up any
+      // external edits); a dirty one keeps its recovered text.
+      if (t.filePath && !t.dirty) {
+        const disk = await window.legilo.readFile(t.filePath);
+        if (disk !== null) content = disk;
+      }
+      const tab = newTab({ filePath: t.filePath, content, label: t.label });
+      if (t.dirty) tab.dirty = true;
+      if (t.active) activeRestored = tab;
+    }
+    if (activeRestored) activateTab(activeRestored);
+    renderTabBar();
+    updateTitle();
+  } else {
+    const session = await window.legilo.getSession();
+    for (const filePath of session?.files || []) {
+      const content = await window.legilo.readFile(filePath);
+      if (content !== null) newTab({ filePath, content });
+    }
+    const active = tabs.find((t) => t.filePath === session?.active);
+    if (active) activateTab(active);
   }
-  const active = tabs.find((t) => t.filePath === session?.active);
-  if (active) activateTab(active);
   // Guide in front on launch — Help → "Show Guide on Startup" turns this off,
   // but always show it when there would otherwise be no tab at all.
   if (prefs.showGuideOnStartup !== false || tabs.length === 0) showGuide();
   editorView.focus();
+  persistRecovery(); // start a fresh recovery snapshot for this session
 }
 
 // The projector window runs no editor — it only mirrors pushed slide state.

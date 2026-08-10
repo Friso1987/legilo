@@ -166,6 +166,12 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => sendMenu('save') },
         { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenu('save-as') },
+        {
+          type: 'checkbox',
+          label: 'Auto-save',
+          checked: store.get('autoSave', true),
+          click: (item) => { store.set('autoSave', item.checked); sendMenu(item.checked ? 'autosave-on' : 'autosave-off'); },
+        },
         { type: 'separator' },
         { label: 'Export to HTML…', accelerator: 'CmdOrCtrl+E', click: () => sendMenu('export-html') },
         { label: 'Export to PDF…', click: () => sendMenu('export-pdf') },
@@ -543,6 +549,7 @@ ipcMain.handle('prefs:get', () => ({
   previewStyle: store.get('previewStyle', 'github'),
   customCssPath: store.get('customCssPath', null),
   showGuideOnStartup: store.get('showGuideOnStartup'),
+  autoSave: store.get('autoSave', true),
 }));
 
 const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize', 'previewStyle'];
@@ -560,6 +567,19 @@ ipcMain.handle('session:get', () => store.get('session', null));
 
 ipcMain.on('session:set', (_e, session) => {
   store.set('session', session);
+});
+
+// Crash/close recovery: the full text of every open tab (including untitled
+// ones), snapshotted as you type. Cleared on a clean close, so it only lingers
+// after a crash or a force-quit — which is exactly when it's restored.
+ipcMain.on('recovery:set', (_e, data) => {
+  store.set('recovery', data);
+});
+
+ipcMain.handle('recovery:get', () => store.get('recovery', null));
+
+ipcMain.on('recovery:clear', () => {
+  store.delete('recovery');
 });
 
 // ---------- dual-view presenting ----------
