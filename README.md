@@ -6,10 +6,10 @@
 
 **Markdown for teachers. Prepare a lesson, teach it live, hand it out.**
 
-Legilo is a split-view Markdown editor built for the classroom. One plain-text
-document becomes your lesson notes, a live slide deck you present on a second
-screen, and a print-ready handout — without ever leaving the app or fighting
-with slide templates.
+Legilo is a split-view Markdown editor built for the classroom. You write one
+plain-text document, and it becomes your lesson notes, the slides you project,
+and the handout you print or send afterwards. No slide templates, no dragging
+text boxes around.
 
 ![Windows](https://img.shields.io/badge/Windows-supported-0969da)
 ![macOS](https://img.shields.io/badge/macOS-supported-0969da)
@@ -22,63 +22,61 @@ with slide templates.
 
 ## Why teachers like it
 
-- **You write, not fiddle.** Type in plain Markdown; there are no text boxes to
-  drag, no theme to wrestle. Headings, bullets, tables and images just work.
-- **One file, three jobs.** The same document is your lesson prep, your
-  projected slides, and the handout you print or e-mail afterwards.
-- **You stay in control during the lesson.** Present on the projector while your
-  own screen keeps the editor — so you can fix a typo, jump to a question, or
-  add an example on the fly, and the class sees it instantly.
+You type in plain Markdown, so preparing a lesson feels like writing notes
+rather than building a presentation. That same file does three jobs: it's your
+prep, your projected slides, and the handout you give out later.
 
----
+The part that makes it work in class is that you stay in control while you
+teach. The slides go on the projector, but your own screen keeps the editor
+open, so you can fix a typo, jump to a question, or add an example on the spot,
+and the class sees it right away.
 
-## ✍️ Prepare the lesson
+## Prepare the lesson
 
-- **Split view** — editor on the left, live preview on the right, with
-  synchronized scrolling and a draggable divider
-- **Tabs** that reopen exactly where you left off, with unsaved-changes guards
-- **Insert & right-click menus** — images via a file picker, tables, code
-  blocks, task lists, footnotes, links… no syntax to memorize
-- **Spellcheck** with suggestions, straight from your OS dictionary
-- **Everything Markdown**: GitHub-flavored tables, task lists, footnotes and
-  fenced code with syntax highlighting
-- **Maths with KaTeX** — inline `$E = mc^2$` and display `$$…$$` blocks, ideal
-  for science and maths lessons
-- **Diagrams** — fenced ` ```mermaid ` or ` ```d2 ` blocks become flowcharts,
+A split view shows your Markdown on the left and a live preview on the right,
+with synchronized scrolling and a divider you can drag.
+
+* Insert menu and right-click menus for images, tables, code blocks, task
+  lists, footnotes and links, so there's no syntax to memorize
+* Spellcheck with suggestions from your operating system's dictionary
+* Full Markdown: GitHub-flavored tables, task lists, footnotes and fenced code
+  with syntax highlighting
+* Maths with KaTeX, both inline (`$E = mc^2$`) and as `$$…$$` blocks, which is
+  handy for science and maths lessons
+* Diagrams from fenced ` ```mermaid ` or ` ```d2 ` blocks: flowcharts,
   timelines, cycles and concept maps, live in the preview and on your slides
-- **Video** — a bare YouTube or Vimeo link on its own line becomes an embedded
-  player; local `.mp4`/`.webm` clips work too
-- Opening an **HTML file converts it to Markdown** automatically, so old
-  materials come across cleanly
+* Video: paste a bare YouTube or Vimeo link on its own line and it becomes an
+  embedded player; local `.mp4` and `.webm` clips work too
+* Open an HTML file and Legilo converts it to Markdown, so old materials come
+  across cleanly
 
-Turn any document into slides by starting a new slide with a `---` line — the
-**Slides** preview layout lets you flip through the deck while you write.
+Tabs reopen where you left off, and there's an unsaved-changes guard so you
+don't lose work. Start a new slide by putting a `---` line between sections,
+and use the Slides preview layout to flip through the deck while you write.
 
----
-
-## 🎤 Teach it
+## Teach it
 
 Press **F5** to present fullscreen, or **Shift+F5** to present on a second
-screen. Navigate with the arrow keys, space, a clicker, or the on-screen
-controls.
+screen. Move through the deck with the arrow keys, space, a clicker, or the
+on-screen controls.
 
 ### Second screen, and you keep editing
 
 **Shift+F5** puts the slides fullscreen on the projector and turns your own
-screen into a **presenter console**: the current slide, the next slide, a timer
-and wall clock, and your private notes — all while the editor stays open
-beside it. Change a word and the class sees it the same second. This is the
-core feature for live teaching.
+screen into a presenter console: the current slide, the next slide, a timer and
+clock, and your private notes, with the editor still open beside it. Change a
+word and the class sees it the same second. This is the feature the whole thing
+is built around.
 
-- Navigate with **PageUp/PageDown** (works with most presentation remotes) or
-  the console's ‹ › buttons; arrow keys and space work too when you're not
-  typing in the editor.
+Navigate with PageUp and PageDown (the buttons most presentation remotes send),
+or the console's arrows. The arrow keys and space also work whenever you're not
+typing in the editor.
 
 ### Bring the class along, one point at a time
 
-Instead of dumping a whole slide at once, reveal it step by step. A line of
-just `. . .` (three dots) is a **pause** — everything after it stays hidden
-until your next click, then fades in:
+Rather than showing a whole slide at once, you can reveal it step by step. A
+line with just `. . .` on it is a pause: everything after it stays hidden until
+your next click, and then fades in.
 
 ```markdown
 ## Photosynthesis
@@ -94,69 +92,65 @@ until your next click, then fades in:
 > Where does this happen?
 ```
 
-### Speaker notes, only for you
+### Notes only you can see
 
-Put reminders in `<!-- note: … -->`. They appear on your console, **never** on
-the projector:
+Put reminders to yourself in `<!-- note: … -->`. They show up on your console
+and never reach the projector.
 
 ```markdown
 ## The French Revolution
 
 - 1789: storming of the Bastille
 
-<!-- note: ask who's read the chapter; keep this slide under 3 minutes -->
+<!-- note: ask who's read the chapter; keep this under 3 minutes -->
 ```
 
-### Annotate and focus attention
+### Annotate and steer attention
 
-- **Draw on the slide** — a digital pen just works (its eraser end erases),
-  pressure-sensitive, with a mouse fallback (**P**). Rough strokes snap into
-  **perfect lines and circles**, and each slide keeps its ink. On the second
-  screen, press **A** to pop the slide up on your screen so you can draw on it —
-  the class sees every stroke live.
-- **Black out** the screen with **B** (**W** for white) to pull all eyes back to
-  you; press again to bring the slide back.
-- **Spotlight** with **S** — dim everything but a circle that follows your
-  pointer, to focus on one figure or line.
-- Overfull slides **auto-shrink to fit** and warn you, so nothing ever runs off
-  the edge mid-lesson.
+* Draw on the slide with a digital pen. The eraser end erases, it's
+  pressure-sensitive, and there's a mouse fallback (**P**). Rough strokes snap
+  into clean lines and circles, and each slide keeps its ink. When you're on the
+  second screen, press **A** to bring the slide up on your own screen so you can
+  draw on it, and the class sees every stroke live.
+* Black out the screen with **B** (or white with **W**) to pull everyone's
+  attention back to you. Press again to bring the slide back.
+* Use the spotlight with **S** to dim everything except a circle that follows
+  your pointer, so you can focus on one figure or line.
+* Slides that are too full shrink to fit and warn you, so nothing runs off the
+  edge in the middle of a lesson.
 
 <div align="center">
 <img src="docs/screenshot-presenter.png" width="850" alt="Presenter mode: fullscreen slide with auto-fit warning" />
 </div>
 
----
+## Hand it out
 
-## 📄 Hand it out
+The same document exports to whatever you need, keeping your preview style,
+tables, lists, code and page breaks. Diagrams and maths come across as crisp
+images.
 
-- **Page view** — Word-like A4 / US Letter sheets that show exactly how the
-  document fills printed pages while you type; `\pagebreak` forces a new page
-- **Print** (`Ctrl+P`), **print preview**, and **Export to PDF / HTML** — all
-  styled, with maths, code highlighting and diagrams
-- **Export to Word** (`.docx`) — a flowing, fully editable handout that keeps
-  your preview style, tables, lists, code and page breaks; diagrams and maths
-  come across as crisp images
-- **Export to PowerPoint** (`.pptx`) — one native slide per `---`, laid out just
-  like presenter mode, so colleagues can open your deck in PowerPoint. YouTube
-  links become native online-video objects and local `.mp4` files are embedded
-  as playable media
+* Page view lays the document out on Word-like A4 or US Letter sheets while you
+  type, and `\pagebreak` forces a new page
+* Print (`Ctrl+P`), print preview, and export to PDF or HTML, all styled with
+  maths, code highlighting and diagrams
+* Export to Word (`.docx`) for a flowing, fully editable handout
+* Export to PowerPoint (`.pptx`) with one native slide per `---`, laid out like
+  presenter mode, so a colleague can open your deck in PowerPoint. YouTube links
+  become native online-video objects and local `.mp4` files are embedded as
+  playable media.
 
----
+## Make it yours
 
-## 🎨 Make it yours
-
-- **Light & dark themes** (`Ctrl+Shift+D`) — diagrams re-render to match
-- **Seven preview styles**: GitHub, Book (serif, print-friendly), Minimal,
-  Academic (auto-numbered sections), Slate, Typewriter, and Newspaper — exports
-  and PDFs follow the active style
-- **Bring your own CSS** — load any stylesheet targeting `.markdown-body`
-- Window size, theme, layout and open tabs are remembered between sessions
+* Light and dark themes (`Ctrl+Shift+D`), and diagrams re-render to match
+* Seven preview styles: GitHub, Book (serif, print-friendly), Minimal, Academic
+  (auto-numbered sections), Slate, Typewriter and Newspaper. Exports and PDFs
+  follow the style you pick.
+* Load your own CSS targeting `.markdown-body` if you want a custom look
+* Window size, theme, layout and open tabs are remembered between sessions
 
 <div align="center">
 <img src="docs/screenshot-slides-dark.png" width="850" alt="Dark theme with the slides preview layout" />
 </div>
-
----
 
 ## Install
 
@@ -164,8 +158,8 @@ Grab the latest installer from the [Releases](../../releases) page:
 
 | OS | File |
 | --- | --- |
-| Windows | `Legilo Setup <version>.exe` (also available in the Microsoft Store) |
-| macOS | `Legilo-<version>.dmg` — unsigned: right-click → Open the first time |
+| Windows | `Legilo Setup <version>.exe` (also in the Microsoft Store) |
+| macOS | `Legilo-<version>.dmg` (unsigned: right-click, then Open the first time) |
 | Linux | `Legilo-<version>.AppImage` or `.deb` |
 
 ## Build from source
@@ -182,8 +176,8 @@ npm run dist     # build installers for your OS
 <summary>Linux dev note: Chromium sandbox error on <code>npm start</code></summary>
 
 If Electron aborts with `chrome-sandbox is owned by root and has mode 4755`,
-either run `npm run start:linux` (dev-only, unsandboxed) or fix the helper
-once per install:
+either run `npm run start:linux` (dev-only, unsandboxed) or fix the helper once
+per install:
 
 ```bash
 sudo chown root:root node_modules/electron/dist/chrome-sandbox
@@ -192,9 +186,9 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 </details>
 
-Releases are built for all three platforms by GitHub Actions: push a tag like
-`v0.5.0` (`npm version 0.5.0 && git push --follow-tags`) and the installers
-appear on a draft GitHub release.
+Releases are built for all three platforms by GitHub Actions. Push a tag like
+`v0.5.0` (`npm version 0.5.0 && git push --follow-tags`) and the installers show
+up on a draft GitHub release.
 
 ### Project layout
 
