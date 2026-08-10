@@ -644,6 +644,9 @@ body.theme-dark .ai-status.bad { color: #ff7b72; }
   background: var(--pane-bg);
   color: var(--chrome-fg);
 }
+.ai-model-row { display: flex; gap: 6px; align-items: stretch; }
+.ai-model-row select { flex: 1 1 auto; min-width: 0; }
+#ai-refresh { flex: 0 0 auto; padding: 5px 10px; }
 .ai-actions { font-size: 13px; }
 .ai-spacer { flex: 1 1 auto; }
 

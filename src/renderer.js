@@ -845,8 +845,8 @@ const AI_SYSTEM = [
   'Reply with Markdown only: no code fence around the whole answer, no preamble or sign-off.',
   'Use Markdown syntax, never raw HTML — write "# Heading", not "<h1>"; the editor does not render HTML tags.',
   'Legilo uses standard GitHub-flavored Markdown (headings, bold/italic, lists, tables, task lists like "- [ ]", footnotes) plus these Legilo-specific conventions — use them where they fit:',
-  '- Slides: a line containing only --- starts a new slide.',
-  '- Step-by-step reveal: a line containing only . . . (dot space dot space dot) pauses a slide, so whatever follows appears on the next click. Use it to reveal points one at a time.',
+  '- Slides: a line containing only --- starts a new slide. There MUST be a blank line both before and after the --- line — otherwise Markdown reads it as a heading and the slide is NOT split. Always surround --- with blank lines.',
+  '- Step-by-step reveal: a line containing only . . . (dot space dot space dot), with a blank line before and after it, pauses a slide so whatever follows appears on the next click. Use it to reveal points one at a time.',
   '- Speaker notes: write them inside <!-- note: ... --> comments. They show only to the presenter, never on the slide.',
   '- Math: inline like $E = mc^2$ and display blocks with $$ ... $$ (KaTeX).',
   '- Diagrams: fenced code blocks tagged mermaid or d2 render as diagrams — use them for flowcharts, timelines, cycles, and concept maps when a visual helps.',
@@ -976,6 +976,7 @@ btnAi.addEventListener('click', () => {
 });
 document.getElementById('ai-close').addEventListener('click', closeAiPanel);
 document.getElementById('ai-recheck').addEventListener('click', refreshAiStatus);
+document.getElementById('ai-refresh').addEventListener('click', refreshAiStatus);
 aiGenerateBtn.addEventListener('click', startGeneration);
 aiTemplateEl.addEventListener('change', () => {
   const t = AI_TEMPLATES[Number(aiTemplateEl.value)] || AI_TEMPLATES[0];
@@ -2158,7 +2159,9 @@ Insert menu.
 ## Slides
 
 A \`---\` line starts a new slide for **presenter mode**: press **F5**
-to present this document, ←/→ to navigate, Esc to leave.
+to present this document, ←/→ to navigate, Esc to leave. Keep a **blank line
+above** the \`---\` — without it, Markdown reads it as a heading instead of a
+slide break.
 
 **Reveal text step by step.** A line of just \`. . .\` (three dots) is a
 pause: everything after it stays hidden until your next click, so you can
