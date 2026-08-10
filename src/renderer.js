@@ -879,8 +879,50 @@ let aiAvailable = false;
 let aiGenerating = false;
 let aiSavedModel = '';
 let aiInsertAt = 0;
+let aiStart = 0;
+let aiRaw = '';
 let aiBuffer = '';
 let aiFlushQueued = false;
+
+// Output guardrail: a --- slide separator only splits a slide when it has a
+// blank line before and after (otherwise Markdown reads it as a heading). A
+// smaller model may ignore that instruction, so after generation we normalize
+// the inserted text to guarantee it — skipping any --- inside a code fence.
+function normalizeSlides(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const isFence = /^(```|~~~)/.test(trimmed);
+    const isSeparator = !inFence && !isFence && /^-{3,}$/.test(trimmed);
+    if (isSeparator) {
+      if (out.length && out[out.length - 1].trim() !== '') out.push('');   // blank line before
+      out.push('---');
+      if (i + 1 < lines.length && lines[i + 1].trim() !== '') out.push(''); // blank line after
+    } else {
+      out.push(line);
+    }
+    if (isFence) inFence = !inFence;
+  }
+  return out.join('\n');
+}
+
+// Rewrites the just-inserted AI text in place with the normalized version,
+// but only if the user hasn't edited that region while it streamed in.
+function finalizeAiInsertion() {
+  if (!aiRaw) return;
+  const end = aiStart + aiRaw.length;
+  if (end <= editorView.state.doc.length
+      && editorView.state.doc.sliceString(aiStart, end) === aiRaw) {
+    const fixed = normalizeSlides(aiRaw);
+    if (fixed !== aiRaw) {
+      editorView.dispatch({ changes: { from: aiStart, to: end, insert: fixed } });
+    }
+  }
+  aiRaw = '';
+}
 
 function aiSelectionText() {
   const s = editorView.state.selection.main;
@@ -954,6 +996,8 @@ function startGeneration() {
   closeAiPanel();
   if (target === 'tab') newTab({ content: '' });
   aiInsertAt = target === 'tab' ? editorView.state.doc.length : editorView.state.selection.main.head;
+  aiStart = aiInsertAt;
+  aiRaw = '';
   aiBuffer = '';
   setAiGenerating(true);
   window.legilo.aiGenerate({
@@ -964,11 +1008,12 @@ function startGeneration() {
 
 window.legilo.onAiChunk((text) => {
   if (!aiGenerating) return;
+  aiRaw += text;
   aiBuffer += text;
   if (!aiFlushQueued) { aiFlushQueued = true; requestAnimationFrame(aiFlush); }
 });
-window.legilo.onAiDone(() => { aiFlush(); setAiGenerating(false); });
-window.legilo.onAiError((msg) => { aiFlush(); setAiGenerating(false); aiToast(`AI error: ${msg}`); });
+window.legilo.onAiDone(() => { aiFlush(); finalizeAiInsertion(); setAiGenerating(false); });
+window.legilo.onAiError((msg) => { aiFlush(); finalizeAiInsertion(); setAiGenerating(false); aiToast(`AI error: ${msg}`); });
 
 btnAi.addEventListener('click', () => {
   if (aiGenerating) { window.legilo.aiCancel(); return; }
