@@ -193,6 +193,11 @@ const app = {
   previewStyle: 'github', // 'github' | 'book' | 'minimal'
 };
 
+// This same page + bundle is loaded a second time (with ?role=audience) in the
+// fullscreen slide window on the projector. In that role it renders no editor —
+// it only displays the slide state pushed from the editor window over IPC.
+const AUDIENCE = new URLSearchParams(location.search).get('role') === 'audience';
+
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
@@ -361,7 +366,7 @@ function createEditorState(content) {
         if (update.docChanged) {
           markDirty();
           clearTimeout(renderTimer);
-          renderTimer = setTimeout(renderPreview, 120);
+          renderTimer = setTimeout(previewTick, 120);
         }
       }),
     ],
@@ -431,16 +436,17 @@ function embedVideos(el, docDir) {
   }
 }
 
-function renderMarkdownInto(el, src, { theme = null, onUpdate = null } = {}) {
+function renderMarkdownInto(el, src, { theme = null, onUpdate = null, docDir = undefined } = {}) {
   el.innerHTML = md.render(src);
   // Resolve relative image paths against the document's folder so local
-  // images (inserted via Insert → Image…) show up in the preview.
-  const docDir = activeDocDir();
+  // images (inserted via Insert → Image…) show up in the preview. The audience
+  // window has no active tab, so it passes the folder in over the sync payload.
+  const dir = docDir !== undefined ? docDir : activeDocDir();
   for (const img of el.querySelectorAll('img')) {
-    const resolved = resolveLocalPath(img.getAttribute('src') || '', docDir);
+    const resolved = resolveLocalPath(img.getAttribute('src') || '', dir);
     if (resolved) img.src = resolved;
   }
-  embedVideos(el, docDir);
+  embedVideos(el, dir);
   return hydrateDiagrams(el, theme || app.theme, onUpdate);
 }
 
@@ -457,6 +463,13 @@ function renderPreview() {
   if (app.previewMode === 'page') renderPaged();
   else if (app.previewMode === 'slides') renderSlidesPreview();
   else renderMarkdownInto(previewEl, getContent());
+}
+
+// Debounced tick after an edit: refresh the preview, and when presenting on a
+// second screen, re-split the slides so the console + projector track edits.
+function previewTick() {
+  renderPreview();
+  if (dualPresenting) refreshFromEdit();
 }
 
 // ---- Word-like page view: distribute rendered blocks over paper sheets ----
@@ -545,6 +558,59 @@ function fitContent(el, availH, baseFontPx) {
 
 const SLIDE_BASE_FONT = 24;
 
+// ---- incremental reveal + speaker notes ----
+
+// A line of just `. . .` (Pandoc's pause) splits a slide into fragments that
+// are revealed one click at a time.
+const FRAGMENT_RE = /^[ \t]*\.[ \t]\.[ \t]\.[ \t]*$/;
+
+function splitFragments(text) {
+  const groups = [[]];
+  for (const line of text.split('\n')) {
+    if (FRAGMENT_RE.test(line)) groups.push([]);
+    else groups[groups.length - 1].push(line);
+  }
+  return groups.map((g) => g.join('\n'));
+}
+
+// `<!-- note: … -->` blocks are speaker notes: pulled out of the slide (so they
+// never reach the audience) and shown only on the presenter console.
+function extractNotes(src) {
+  const notes = [];
+  const text = src.replace(/<!--\s*note:\s*([\s\S]*?)-->/gi, (_m, n) => {
+    notes.push(n.trim());
+    return '';
+  });
+  return { text, notes: notes.join('\n\n') };
+}
+
+// Renders a slide's markdown into `el`, wrapping each `. . .`-separated group
+// in a `.fragment` box. Returns the stripped speaker notes and fragment count.
+// `revealAll` shows every fragment at once (previews, the "next" console card).
+function renderSlideBody(el, rawText, { revealAll = false, docDir, onUpdate = null } = {}) {
+  const { text, notes } = extractNotes(rawText);
+  const frags = splitFragments(text);
+  el.innerHTML = '';
+  const jobs = [];
+  frags.forEach((frag, i) => {
+    const box = document.createElement('div');
+    box.className = 'fragment';
+    box.dataset.frag = i;
+    if (revealAll) box.classList.add('shown');
+    el.appendChild(box);
+    jobs.push(renderMarkdownInto(box, frag, { docDir, onUpdate }));
+  });
+  return { notes, fragCount: frags.length, done: Promise.all(jobs) };
+}
+
+// Shows fragments up to and including `step`; the rest keep their space but
+// stay faded (so revealing never reflows the slide).
+function applyReveal(el, step) {
+  for (const box of el.querySelectorAll('.fragment')) {
+    box.classList.toggle('shown', Number(box.dataset.frag) <= step);
+  }
+}
+
 function renderSlidesPreview() {
   previewEl.innerHTML = '';
   const parts = splitSlides(getContent());
@@ -556,7 +622,7 @@ function renderSlidesPreview() {
     body.className = 'slide-card-content markdown-body';
     card.appendChild(body);
     previewEl.appendChild(card);
-    renderMarkdownInto(body, part.text, { onUpdate: schedulePreviewUpdate });
+    renderSlideBody(body, part.text, { revealAll: true, onUpdate: schedulePreviewUpdate });
     const scale = fitContent(body, card.clientHeight - 96, SLIDE_BASE_FONT);
     if (scale < 1) {
       card.classList.add('overfull');
@@ -611,10 +677,14 @@ previewPane.addEventListener('scroll', () => onScroll('preview', previewPane, sc
 // Theme & view mode
 // ---------------------------------------------------------------------------
 
-function applyTheme(theme) {
+function setThemeClasses(theme) {
   app.theme = theme;
   document.body.classList.toggle('theme-dark', theme === 'dark');
   document.body.classList.toggle('theme-light', theme === 'light');
+}
+
+function applyTheme(theme) {
+  setThemeClasses(theme);
   editorView.dispatch({ effects: themeCompartment.reconfigure(editorThemeExt()) });
   btnTheme.querySelector('.theme-label').textContent = theme === 'dark' ? 'Light' : 'Dark';
   window.legilo.setPref('theme', theme);
@@ -636,18 +706,22 @@ function applyViewMode(mode) {
 
 const PREVIEW_STYLES = ['github', 'book', 'minimal', 'academic', 'slate', 'typewriter', 'newspaper'];
 
-function applyPreviewStyle(style) {
+function setStyleClasses(style) {
   app.previewStyle = style;
   for (const s of PREVIEW_STYLES) {
     document.body.classList.toggle(`style-${s}`, s === style && s !== 'github');
   }
+}
+
+function applyPreviewStyle(style) {
+  setStyleClasses(style);
   window.legilo.setPref('previewStyle', style);
   renderPreview();
 }
 
 // User CSS is injected in a <style> after the app stylesheet so it wins on
 // equal specificity. Target `.markdown-body …` in the file for best results.
-function setCustomCss(css) {
+function injectCustomCss(css) {
   let el = document.getElementById('custom-css');
   if (!el) {
     el = document.createElement('style');
@@ -655,6 +729,14 @@ function setCustomCss(css) {
     document.head.appendChild(el);
   }
   el.textContent = css || '';
+}
+
+function getCustomCss() {
+  return document.getElementById('custom-css')?.textContent || '';
+}
+
+function setCustomCss(css) {
+  injectCustomCss(css);
   renderPreview();
 }
 
@@ -728,7 +810,23 @@ divider.addEventListener('mousedown', (e) => {
 
 let slides = [];
 let slideIndex = 0;
-let presenting = false;
+let presenting = false;       // a fullscreen #slide is on screen (solo, annotate, or audience)
+let dualPresenting = false;   // editor window is driving the projector
+let annotating = false;       // dual-present: fullscreen overlay up so the teacher can draw
+const revealSteps = new Map(); // slideIndex → how many `. . .` fragments are shown
+let blackout = 'off';         // 'off' | 'black' | 'white'
+let spotlight = false;
+let spotlightPos = { x: 0.5, y: 0.5 }; // fraction of the viewport
+let audienceProgress = null;  // audience window: { idx, count } for the progress bar
+let audienceDocDir = null;    // audience window: folder to resolve relative images
+
+const presentConsole = document.getElementById('present-console');
+const pcCurrent = document.getElementById('pc-current');
+const pcNext = document.getElementById('pc-next');
+const pcNotes = document.getElementById('pc-notes');
+const pcCounter = document.getElementById('pc-counter');
+const slideBlackout = document.getElementById('slide-blackout');
+const slideSpotlight = document.getElementById('slide-spotlight');
 
 // Token-based split so `---` inside code fences (or setext headings) doesn't
 // cut a slide.
@@ -755,16 +853,34 @@ function slideForCursor() {
   return idx;
 }
 
+function currentDocDir() {
+  return AUDIENCE ? audienceDocDir : activeDocDir();
+}
+
+function fragCountFor(idx) {
+  const s = slides[idx];
+  return s ? splitFragments(extractNotes(s.text).text).length : 1;
+}
+
+// Renders the current slide into the fullscreen `#slide` stage (solo present,
+// dual-present annotate overlay, or the audience window).
 function renderSlide() {
-  renderMarkdownInto(slideEl, slides[slideIndex].text, {
-    onUpdate: () => { if (presenting) renderSlide(); }, // re-fit once diagrams land
+  renderSlideBody(slideEl, slides[slideIndex].text, {
+    docDir: currentDocDir(),
+    onUpdate: () => { if (presenting || AUDIENCE) fitAndReveal(); }, // re-fit once diagrams land
   });
   slideCounter.textContent = `${slideIndex + 1} / ${slides.length}`;
-  // Shrink overflowing slides so nothing falls off the edge, and tell the
-  // presenter about it so they know to split the slide.
+  updateProgress();
+  fitAndReveal();
+}
+
+function fitAndReveal() {
   const warn = document.getElementById('slide-warn');
+  // Fit with every fragment measured, then hide the not-yet-revealed ones, so
+  // the layout is stable no matter how far the reveal has progressed.
   const scale = fitContent(slideEl, slideStage.clientHeight - 96, SLIDE_BASE_FONT);
-  if (scale < 1) {
+  applyReveal(slideEl, revealSteps.get(slideIndex) || 0);
+  if (scale < 1 && !AUDIENCE) {
     warn.textContent = `⚠ Text scaled to ${Math.round(scale * 100)}% to fit — consider splitting this slide with ---`;
     warn.hidden = false;
   } else {
@@ -772,26 +888,71 @@ function renderSlide() {
   }
 }
 
+function updateProgress() {
+  const bar = document.getElementById('slide-progress-bar');
+  const prog = document.getElementById('slide-progress');
+  if (!bar) return;
+  let idx = slideIndex; let count = slides.length;
+  if (AUDIENCE && audienceProgress) { idx = audienceProgress.idx; count = audienceProgress.count; }
+  bar.style.width = count > 1 ? `${(idx / (count - 1)) * 100}%` : '100%';
+  prog.hidden = false;
+}
+
 function fitSlide() {
   // Stage has a fixed 960x540 design size; scale it to the viewport.
   const scale = Math.min(window.innerWidth / 1020, window.innerHeight / 640);
   slideStage.style.transform = `scale(${scale})`;
   resizeInkCanvas();
+  applySpotlightPos();
 }
 
-function gotoSlide(idx) {
-  slideIndex = Math.min(slides.length - 1, Math.max(0, idx));
-  renderSlide();
-  redrawInk();
+// Updates whatever slide surfaces are live (fullscreen stage and/or console
+// minis) and mirrors the state to the audience window.
+function refreshSlide({ full = true } = {}) {
+  if (AUDIENCE || presenting) {
+    if (full) renderSlide();
+    else fitAndReveal();
+    redrawInk();
+  }
+  if (dualPresenting) renderConsole();
+  pushAudienceState();
 }
+
+function gotoSlide(idx, { revealAll = false } = {}) {
+  slideIndex = Math.min(slides.length - 1, Math.max(0, idx));
+  if (revealAll) revealSteps.set(slideIndex, Math.max(0, fragCountFor(slideIndex) - 1));
+  else if (!revealSteps.has(slideIndex)) revealSteps.set(slideIndex, 0);
+  refreshSlide({ full: true });
+}
+
+// Advance: reveal the next fragment first, then move to the next slide.
+function advance() {
+  const max = fragCountFor(slideIndex) - 1;
+  const step = revealSteps.get(slideIndex) || 0;
+  if (step < max) { revealSteps.set(slideIndex, step + 1); refreshSlide({ full: false }); }
+  else gotoSlide(slideIndex + 1);
+}
+
+function retreat() {
+  const step = revealSteps.get(slideIndex) || 0;
+  if (step > 0) { revealSteps.set(slideIndex, step - 1); refreshSlide({ full: false }); }
+  else if (slideIndex > 0) gotoSlide(slideIndex - 1, { revealAll: true });
+}
+
+// ---- solo presenter (single screen, fullscreen overlay) ----
 
 function enterPresenter() {
+  if (dualPresenting) return; // one presenting mode at a time
   slides = splitSlides(getContent());
   slideIndex = slideForCursor();
+  revealSteps.clear();
+  blackout = 'off'; spotlight = false;
   presenting = true;
   presenterEl.hidden = false;
+  applyBlackout(); applySpotlight();
   renderSlide();
   fitSlide();
+  redrawInk();
   presenterEl.requestFullscreen?.().catch(() => {});
 }
 
@@ -802,43 +963,292 @@ function exitPresenter() {
   editorView.focus();
 }
 
+// ---- dual-view presenter (second screen + editor console) ----
+
+async function enterDualPresent() {
+  if (dualPresenting) return exitDualPresent();
+  if (presenting) exitPresenter();
+  slides = splitSlides(getContent());
+  slideIndex = slideForCursor();
+  revealSteps.clear();
+  blackout = 'off'; spotlight = false;
+  dualPresenting = true;
+  document.body.classList.add('dual-presenting');
+  presentConsole.hidden = false;
+  startTimer();
+  editorView.requestMeasure();
+  renderConsole();
+  await window.legilo.openAudience(); // main pings 'audience-ready' once it's loaded
+}
+
+function exitDualPresent() {
+  if (annotating) toggleAnnotate();
+  dualPresenting = false;
+  document.body.classList.remove('dual-presenting');
+  presentConsole.hidden = true;
+  stopTimer();
+  window.legilo.closeAudience();
+  editorView.requestMeasure();
+  editorView.focus();
+}
+
+// While in dual-present, pop the fullscreen slide up on the teacher's own
+// screen so they can draw on it (mirrored live to the projector), then hide it
+// again to keep editing.
+function toggleAnnotate() {
+  if (!dualPresenting) return;
+  annotating = !annotating;
+  presenting = annotating;
+  presenterEl.hidden = !annotating;
+  if (annotating) {
+    applyBlackout(); applySpotlight();
+    renderSlide();
+    fitSlide();
+    redrawInk();
+    presenterEl.requestFullscreen?.().catch(() => {});
+  } else if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+
+// ---- presenter console (editor window) ----
+
+const MINI_H = 150; // rendered height of a console slide mini, px
+
+function renderMini(card, rawText, { revealStep = Infinity } = {}) {
+  const body = card.querySelector('.slide-card-content');
+  card.style.zoom = '';
+  if (rawText == null) { body.innerHTML = ''; card.style.visibility = 'hidden'; return; }
+  card.style.visibility = '';
+  renderSlideBody(body, rawText, { revealAll: revealStep === Infinity });
+  if (revealStep !== Infinity) applyReveal(body, revealStep);
+  fitContent(body, card.clientHeight - 96, SLIDE_BASE_FONT);
+  card.style.zoom = MINI_H / 540;
+}
+
+function renderConsole() {
+  renderMini(pcCurrent, slides[slideIndex]?.text ?? null, { revealStep: revealSteps.get(slideIndex) || 0 });
+  renderMini(pcNext, slides[slideIndex + 1]?.text ?? null, { revealStep: Infinity });
+  pcNotes.textContent = extractNotes(slides[slideIndex]?.text ?? '').notes;
+  pcCounter.textContent = `${slideIndex + 1} / ${slides.length}`;
+  updateBlackoutButtons();
+}
+
+// Re-split and refresh when the document is edited mid-presentation.
+function refreshFromEdit() {
+  slides = splitSlides(getContent());
+  if (slideIndex >= slides.length) slideIndex = slides.length - 1;
+  const max = fragCountFor(slideIndex) - 1;
+  if ((revealSteps.get(slideIndex) || 0) > max) revealSteps.set(slideIndex, Math.max(0, max));
+  refreshSlide({ full: true });
+}
+
+let timerStart = 0;
+let timerInterval = null;
+const pcElapsed = document.getElementById('pc-elapsed');
+const pcClock = document.getElementById('pc-clock');
+
+function fmtDuration(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function tickTimer() {
+  pcElapsed.textContent = fmtDuration(Date.now() - timerStart);
+  const now = new Date();
+  pcClock.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function startTimer() { timerStart = Date.now(); tickTimer(); timerInterval = setInterval(tickTimer, 1000); }
+function stopTimer() { clearInterval(timerInterval); timerInterval = null; }
+
+// ---- blackout / whiteout / spotlight ----
+
+function applyBlackout() {
+  slideBlackout.hidden = blackout === 'off';
+  slideBlackout.classList.toggle('black', blackout === 'black');
+  slideBlackout.classList.toggle('white', blackout === 'white');
+  updateBlackoutButtons();
+}
+
+function applySpotlight() {
+  slideSpotlight.hidden = !spotlight;
+  applySpotlightPos();
+  updateBlackoutButtons();
+}
+
+function applySpotlightPos() {
+  slideSpotlight.style.setProperty('--sx', `${spotlightPos.x * window.innerWidth}px`);
+  slideSpotlight.style.setProperty('--sy', `${spotlightPos.y * window.innerHeight}px`);
+}
+
+function updateBlackoutButtons() {
+  document.getElementById('ink-black')?.classList.toggle('active', blackout !== 'off');
+  document.getElementById('ink-spot')?.classList.toggle('active', spotlight);
+  document.getElementById('pc-black')?.classList.toggle('active', blackout !== 'off');
+  document.getElementById('pc-spot')?.classList.toggle('active', spotlight);
+}
+
+function toggleBlackout(mode) {
+  blackout = blackout === mode ? 'off' : mode;
+  applyBlackout();
+  pushAudienceState();
+}
+
+function toggleSpotlight() {
+  spotlight = !spotlight;
+  applySpotlight();
+  pushAudienceState();
+}
+
+// ---- sync to the audience window (coalesced to one push per frame) ----
+
+let syncScheduled = false;
+
+function pushAudienceState() {
+  if (!dualPresenting || syncScheduled) return;
+  syncScheduled = true;
+  requestAnimationFrame(() => {
+    syncScheduled = false;
+    window.legilo.syncAudience({
+      slideText: slides[slideIndex]?.text ?? '',
+      slideIndex,
+      slideCount: slides.length,
+      revealStep: revealSteps.get(slideIndex) || 0,
+      theme: app.theme,
+      previewStyle: app.previewStyle,
+      customCss: getCustomCss(),
+      docDir: activeDocDir(),
+      blackout,
+      spotlight,
+      spotlightPos,
+      strokes: ink.strokes.get(slideIndex) || [],
+    });
+  });
+}
+
+// ---- audience window: render state pushed from the editor ----
+
+function applyAudienceState(s) {
+  if (s.theme && s.theme !== app.theme) setThemeClasses(s.theme);
+  if (s.previewStyle && s.previewStyle !== app.previewStyle) setStyleClasses(s.previewStyle);
+  injectCustomCss(s.customCss || '');
+  audienceDocDir = s.docDir || null;
+  audienceProgress = { idx: s.slideIndex, count: s.slideCount };
+  slides = [{ text: s.slideText || '', startLine: 0 }];
+  slideIndex = 0;
+  revealSteps.clear();
+  revealSteps.set(0, s.revealStep || 0);
+  ink.strokes.clear();
+  ink.strokes.set(0, s.strokes || []);
+  blackout = s.blackout || 'off';
+  spotlight = !!s.spotlight;
+  spotlightPos = s.spotlightPos || { x: 0.5, y: 0.5 };
+  presenting = true;
+  presenterEl.hidden = false;
+  applyBlackout();
+  applySpotlight();
+  renderSlide();
+  fitSlide();
+  redrawInk();
+}
+
 // Esc in fullscreen fires fullscreenchange, not keydown — tear down there too.
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && presenting) exitPresenter();
+  if (document.fullscreenElement) return;
+  if (annotating) toggleAnnotate();
+  else if (presenting && !AUDIENCE) exitPresenter();
 });
 
 document.addEventListener('keydown', (e) => {
-  if (!presenting) return;
+  if (AUDIENCE) return; // the projector is display-only
+  // Dual-present console: the editor may hold focus, so only remap keys that
+  // aren't ordinary typing unless the editor is unfocused.
+  if (dualPresenting && !annotating) {
+    switch (e.key) {
+      case 'PageDown': e.preventDefault(); advance(); return;
+      case 'PageUp': e.preventDefault(); retreat(); return;
+      case 'Escape': e.preventDefault(); exitDualPresent(); return;
+      default: break;
+    }
+    if (editorView.hasFocus) return; // let the teacher type
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowDown': case ' ': e.preventDefault(); advance(); break;
+      case 'ArrowLeft': case 'ArrowUp': e.preventDefault(); retreat(); break;
+      case 'Home': e.preventDefault(); gotoSlide(0); break;
+      case 'End': e.preventDefault(); gotoSlide(slides.length - 1, { revealAll: true }); break;
+      case 'b': case 'B': e.preventDefault(); toggleBlackout('black'); break;
+      case 'w': case 'W': e.preventDefault(); toggleBlackout('white'); break;
+      case 's': case 'S': e.preventDefault(); toggleSpotlight(); break;
+      case 'a': case 'A': e.preventDefault(); toggleAnnotate(); break;
+      default: break;
+    }
+    return;
+  }
+  if (!presenting) return; // solo present, or the dual-present annotate overlay
   switch (e.key) {
     case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
-      e.preventDefault(); gotoSlide(slideIndex + 1); break;
+      e.preventDefault(); advance(); break;
     case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
-      e.preventDefault(); gotoSlide(slideIndex - 1); break;
+      e.preventDefault(); retreat(); break;
     case 'Home': e.preventDefault(); gotoSlide(0); break;
-    case 'End': e.preventDefault(); gotoSlide(slides.length - 1); break;
-    case 'Escape': e.preventDefault(); exitPresenter(); break;
+    case 'End': e.preventDefault(); gotoSlide(slides.length - 1, { revealAll: true }); break;
+    case 'Escape': e.preventDefault(); annotating ? toggleAnnotate() : exitPresenter(); break;
     // ink
     case 'p': case 'P': e.preventDefault(); setInkMode(ink.mode === 'pen' ? 'off' : 'pen'); break;
     case 'e': case 'E': e.preventDefault(); setInkMode(ink.mode === 'erase' ? 'off' : 'erase'); break;
     case 'c': case 'C': e.preventDefault(); cycleInkColor(); break;
-    case 'x': case 'X': e.preventDefault(); ink.strokes.delete(slideIndex); redrawInk(); break;
+    case 'x': case 'X': e.preventDefault(); clearInk(); break;
+    // audience controls
+    case 'b': case 'B': e.preventDefault(); toggleBlackout('black'); break;
+    case 'w': case 'W': e.preventDefault(); toggleBlackout('white'); break;
+    case 's': case 'S': e.preventDefault(); toggleSpotlight(); break;
+    case 'a': case 'A': if (dualPresenting) { e.preventDefault(); toggleAnnotate(); } break;
+    default: break;
   }
 }, true);
 
-document.getElementById('slide-prev').addEventListener('click', () => gotoSlide(slideIndex - 1));
-document.getElementById('slide-next').addEventListener('click', () => gotoSlide(slideIndex + 1));
-document.getElementById('presenter-exit').addEventListener('click', exitPresenter);
+function clearInk() {
+  ink.strokes.delete(slideIndex);
+  redrawInk();
+  pushAudienceState();
+}
+
+document.getElementById('slide-prev').addEventListener('click', () => retreat());
+document.getElementById('slide-next').addEventListener('click', () => advance());
+document.getElementById('presenter-exit').addEventListener('click', () => (annotating ? toggleAnnotate() : exitPresenter()));
+document.getElementById('ink-black').addEventListener('click', () => toggleBlackout('black'));
+document.getElementById('ink-spot').addEventListener('click', () => toggleSpotlight());
+
+// Console controls
+document.getElementById('pc-prev').addEventListener('click', () => retreat());
+document.getElementById('pc-next-btn').addEventListener('click', () => advance());
+pcNext.addEventListener('click', () => advance());
+pcCurrent.addEventListener('click', () => toggleAnnotate());
+document.getElementById('pc-exit').addEventListener('click', exitDualPresent);
+document.getElementById('pc-black').addEventListener('click', () => toggleBlackout('black'));
+document.getElementById('pc-spot').addEventListener('click', () => toggleSpotlight());
+pcElapsed.addEventListener('click', () => { timerStart = Date.now(); tickTimer(); });
 
 // Click on the slide advances; click on the left fifth goes back.
 presenterEl.addEventListener('click', (e) => {
+  if (AUDIENCE) return;
   if (e.target.closest('#presenter-hud')) return;
   if (e.target.closest('a, .video-embed')) return; // interact, don't navigate
   if (inkConsumesClick()) return; // drawing, not navigating
-  if (e.clientX < window.innerWidth / 5) gotoSlide(slideIndex - 1);
-  else gotoSlide(slideIndex + 1);
+  if (e.clientX < window.innerWidth / 5) retreat();
+  else advance();
 });
 
-window.addEventListener('resize', () => { if (presenting) fitSlide(); });
+// Spotlight follows the pointer over the fullscreen slide.
+presenterEl.addEventListener('pointermove', (e) => {
+  if (!spotlight || AUDIENCE) return;
+  spotlightPos = { x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight };
+  applySpotlightPos();
+  pushAudienceState();
+});
+
+window.addEventListener('resize', () => { if (presenting || AUDIENCE) fitSlide(); });
 
 // ---------------------------------------------------------------------------
 // Presenter ink — draw on slides with a digital pen (or mouse via Pen mode)
@@ -898,6 +1308,7 @@ function redrawInk() {
   const m = stageMap();
   for (const s of ink.strokes.get(slideIndex) || []) drawInkStroke(s, m);
   if (ink.current) drawInkStroke(ink.current, m);
+  pushAudienceState(); // mirror live annotation to the projector (no-op unless dual)
 }
 
 function drawInkStroke(s, m) {
@@ -1010,6 +1421,7 @@ function pointerErases(e) {
 // stroke on top of an embedded video needs the ✎ mode: the iframe swallows
 // pointer events before they can bubble.)
 presenterEl.addEventListener('pointerdown', (e) => {
+  if (AUDIENCE) return; // the projector never draws locally; ink arrives over sync
   const draws = e.pointerType === 'pen' || ink.mode !== 'off';
   if (!draws || e.target.closest('#presenter-hud')) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -1380,7 +1792,10 @@ window.legilo.onMenu(async (action) => {
     case 'cycle-preview': return cyclePreviewMode();
     case 'paper-A4': return applyPaperSize('A4');
     case 'paper-Letter': return applyPaperSize('Letter');
-    case 'presenter': return presenting ? exitPresenter() : enterPresenter();
+    case 'presenter': return presenting && !annotating ? exitPresenter() : enterPresenter();
+    case 'present-dual': return enterDualPresent();
+    case 'audience-ready': return pushAudienceState();
+    case 'audience-closed': return dualPresenting ? exitDualPresent() : undefined;
     case 'show-guide': return showGuide();
   }
 });
@@ -1513,10 +1928,29 @@ Insert menu.
 A \`---\` line starts a new slide for **presenter mode**: press **F5**
 to present this document, ←/→ to navigate, Esc to leave.
 
+**Reveal text step by step.** A line of just \`. . .\` (three dots) is a
+pause: everything after it stays hidden until your next click, so you can
+walk a class through a point one line at a time.
+
+- Point one
+
+. . .
+
+- Point two (appears on the next click)
+
+**Present on a second screen** with **Shift+F5**: the slides go fullscreen
+on the projector while your own screen keeps the editor plus a console
+(current + next slide, a timer, and your notes) — so you can keep editing
+live and the audience sees it instantly.
+
+**Speaker notes** live in \`<!-- note: … -->\` — they show on your console
+only, never on the projector.
+
 While presenting you can **draw on the slides**: a digital pen just works
 (its eraser end erases); with a mouse, toggle ✎ in the corner or press
 **P**. Sloppy circles and lines snap into perfect ones. **E** = eraser,
-**C** = pen colour, **X** = clear the slide.
+**C** = pen colour, **X** = clear the slide. **B** blacks out the screen
+(**W** = white) to pull attention back to you, and **S** is a spotlight.
 
 ---
 
@@ -1554,8 +1988,11 @@ preview style you picked above:
 | Ctrl+Shift+P | Preview layout: flow / page / slides |
 | Ctrl+Shift+D | Dark theme on/off |
 | Ctrl+1 / 2 / 3 | Split / editor / preview |
-| F5 | Presenter mode |
+| F5 / Shift+F5 | Present / present on a second screen |
+| → ← Space | Next / previous (reveals \`. . .\` steps too) |
 | P / E / C / X | While presenting: pen / eraser / colour / clear ink |
+| B / W / S | While presenting: black out / white out / spotlight |
+| A | Second-screen mode: pop up the slide to draw on it |
 `;
 
 const GUIDE_LABEL = 'Markdown Guide';
@@ -1566,7 +2003,7 @@ function showGuide() {
   else newTab({ content: GUIDE, label: GUIDE_LABEL });
 }
 
-(async function init() {
+async function init() {
   const prefs = await window.legilo.getPrefs();
   applyTheme(prefs.theme || 'light');
   applyViewMode(prefs.viewMode || 'split');
@@ -1589,4 +2026,13 @@ function showGuide() {
   // but always show it when there would otherwise be no tab at all.
   if (prefs.showGuideOnStartup !== false || tabs.length === 0) showGuide();
   editorView.focus();
-})();
+}
+
+// The projector window runs no editor — it only mirrors pushed slide state.
+if (AUDIENCE) {
+  document.body.classList.add('audience');
+  presenterEl.hidden = false;
+  window.legilo.onAudienceState(applyAudienceState);
+} else {
+  init();
+}

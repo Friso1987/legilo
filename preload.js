@@ -4,6 +4,12 @@ contextBridge.exposeInMainWorld('legilo', {
   // main -> renderer
   onMenu: (cb) => ipcRenderer.on('menu', (_e, action) => cb(action)),
   onCloseRequest: (cb) => ipcRenderer.on('app:close-request', () => cb()),
+  onAudienceState: (cb) => ipcRenderer.on('audience:state', (_e, state) => cb(state)),
+
+  // dual-view presenting
+  openAudience: () => ipcRenderer.invoke('presenter:open-audience'),
+  closeAudience: () => ipcRenderer.send('presenter:close-audience'),
+  syncAudience: (state) => ipcRenderer.send('presenter:sync', state),
 
   // renderer -> main
   openFile: () => ipcRenderer.invoke('dialog:open'),

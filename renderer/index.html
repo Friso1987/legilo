@@ -46,17 +46,51 @@
       <article id="slide" class="markdown-body"></article>
     </div>
     <canvas id="ink-canvas"></canvas>
+    <div id="slide-spotlight" hidden></div>
+    <div id="slide-blackout" hidden></div>
+    <div id="slide-progress" hidden><div id="slide-progress-bar"></div></div>
     <div id="slide-warn" hidden></div>
     <div id="presenter-hud">
       <button id="ink-pen" title="Draw on the slide (P) — a digital pen draws without toggling">✎</button>
       <button id="ink-color" title="Pen colour (C)">●</button>
       <button id="ink-erase" title="Eraser (E) — or use the pen's eraser end">⌫</button>
       <button id="ink-clear" title="Clear ink on this slide (X)">✧</button>
+      <button id="ink-black" title="Black out the screen (B) — W for white">◼</button>
+      <button id="ink-spot" title="Spotlight (S)">◎</button>
       <span class="hud-sep"></span>
       <button id="slide-prev" title="Previous (←)">‹</button>
       <span id="slide-counter">1 / 1</span>
       <button id="slide-next" title="Next (→)">›</button>
       <button id="presenter-exit" title="Exit (Esc)">✕</button>
+    </div>
+  </div>
+
+  <div id="present-console" hidden>
+    <div class="pc-slides">
+      <div class="pc-slot">
+        <span class="pc-label">Now</span>
+        <div class="slide-card pc-card" id="pc-current"><div class="slide-card-content markdown-body"></div></div>
+      </div>
+      <div class="pc-slot">
+        <span class="pc-label">Next</span>
+        <div class="slide-card pc-card" id="pc-next"><div class="slide-card-content markdown-body"></div></div>
+      </div>
+    </div>
+    <div class="pc-side">
+      <div class="pc-timer">
+        <span id="pc-elapsed" title="Elapsed — click to reset">00:00</span>
+        <span id="pc-clock">--:--</span>
+      </div>
+      <div class="pc-notes" id="pc-notes"></div>
+      <div class="pc-controls">
+        <button id="pc-prev" title="Previous (PageUp)">‹</button>
+        <span id="pc-counter">1 / 1</span>
+        <button id="pc-next-btn" title="Next (PageDown)">›</button>
+        <span class="hud-sep"></span>
+        <button id="pc-black" title="Black out (B)">◼</button>
+        <button id="pc-spot" title="Spotlight (S)">◎</button>
+        <button id="pc-exit" title="Stop presenting (Esc)">✕ Stop</button>
+      </div>
     </div>
   </div>
 

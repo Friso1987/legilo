@@ -4,11 +4,12 @@
 
 # Legilo
 
-**Write it once. Read it, present it, print it.**
+**Markdown for teachers. Prepare a lesson, teach it live, hand it out.**
 
-Legilo is a split-view Markdown editor that turns one plain-text document into
-a live preview, a slide deck, and a print-ready paper — without ever leaving
-the app.
+Legilo is a split-view Markdown editor built for the classroom. One plain-text
+document becomes your lesson notes, a live slide deck you present on a second
+screen, and a print-ready handout — without ever leaving the app or fighting
+with slide templates.
 
 ![Windows](https://img.shields.io/badge/Windows-supported-0969da)
 ![macOS](https://img.shields.io/badge/macOS-supported-0969da)
@@ -19,70 +20,143 @@ the app.
 
 </div>
 
-## ✍️ Write
+## Why teachers like it
 
-- **Split view** — CodeMirror editor on the left, live GitHub-style preview on
-  the right, with synchronized scrolling and a draggable divider
+- **You write, not fiddle.** Type in plain Markdown; there are no text boxes to
+  drag, no theme to wrestle. Headings, bullets, tables and images just work.
+- **One file, three jobs.** The same document is your lesson prep, your
+  projected slides, and the handout you print or e-mail afterwards.
+- **You stay in control during the lesson.** Present on the projector while your
+  own screen keeps the editor — so you can fix a typo, jump to a question, or
+  add an example on the fly, and the class sees it instantly.
+
+---
+
+## ✍️ Prepare the lesson
+
+- **Split view** — editor on the left, live preview on the right, with
+  synchronized scrolling and a draggable divider
 - **Tabs** that reopen exactly where you left off, with unsaved-changes guards
-- **Find & replace** (`Ctrl+F` / `Ctrl+H`) with regex and whole-word options
-- **Insert menu & right-click menus** — images via a file picker, tables, code
+- **Insert & right-click menus** — images via a file picker, tables, code
   blocks, task lists, footnotes, links… no syntax to memorize
 - **Spellcheck** with suggestions, straight from your OS dictionary
-- **Everything Markdown**: GitHub-flavored tables, task lists, footnotes,
-  fenced code with syntax highlighting — plus **KaTeX math**
-  (`$E = mc^2$` and `$$…$$` blocks)
-- **Diagrams**: fenced code blocks tagged `mermaid` or `d2` render as diagrams —
-  flowcharts, sequence diagrams, architecture sketches — live in the preview,
-  on slides, in print, and in every export
-- **Video embeds**: a bare YouTube or Vimeo URL on its own line becomes an
-  embedded player; local `.mp4`/`.webm` files work too
-- Opening an **HTML file converts it to Markdown** automatically
+- **Everything Markdown**: GitHub-flavored tables, task lists, footnotes and
+  fenced code with syntax highlighting
+- **Maths with KaTeX** — inline `$E = mc^2$` and display `$$…$$` blocks, ideal
+  for science and maths lessons
+- **Diagrams** — fenced ` ```mermaid ` or ` ```d2 ` blocks become flowcharts,
+  timelines, cycles and concept maps, live in the preview and on your slides
+- **Video** — a bare YouTube or Vimeo link on its own line becomes an embedded
+  player; local `.mp4`/`.webm` clips work too
+- Opening an **HTML file converts it to Markdown** automatically, so old
+  materials come across cleanly
 
-## 🎤 Present
+Turn any document into slides by starting a new slide with a `---` line — the
+**Slides** preview layout lets you flip through the deck while you write.
 
-Any document is already a slide deck: a `---` line starts a new slide.
+---
 
-- **Presenter mode** (`F5`) — fullscreen slides with keyboard/click navigation
-- **Draw on your slides** — a digital pen just works (eraser end included),
-  pressure-sensitive, with a mouse fallback (`P`); rough strokes snap into
-  **perfect lines and circles**, and each slide remembers its ink
-- **Slides layout** in the preview pane, to review your deck while writing
-- Overfull slides **auto-shrink to fit** and show a hint so you know when to
-  split them — diagrams and videos scale down with the text
+## 🎤 Teach it
+
+Press **F5** to present fullscreen, or **Shift+F5** to present on a second
+screen. Navigate with the arrow keys, space, a clicker, or the on-screen
+controls.
+
+### Second screen, and you keep editing
+
+**Shift+F5** puts the slides fullscreen on the projector and turns your own
+screen into a **presenter console**: the current slide, the next slide, a timer
+and wall clock, and your private notes — all while the editor stays open
+beside it. Change a word and the class sees it the same second. This is the
+core feature for live teaching.
+
+- Navigate with **PageUp/PageDown** (works with most presentation remotes) or
+  the console's ‹ › buttons; arrow keys and space work too when you're not
+  typing in the editor.
+
+### Bring the class along, one point at a time
+
+Instead of dumping a whole slide at once, reveal it step by step. A line of
+just `. . .` (three dots) is a **pause** — everything after it stays hidden
+until your next click, then fades in:
+
+```markdown
+## Photosynthesis
+
+- Light + CO₂
+
+. . .
+
+- → glucose + O₂
+
+. . .
+
+> Where does this happen?
+```
+
+### Speaker notes, only for you
+
+Put reminders in `<!-- note: … -->`. They appear on your console, **never** on
+the projector:
+
+```markdown
+## The French Revolution
+
+- 1789: storming of the Bastille
+
+<!-- note: ask who's read the chapter; keep this slide under 3 minutes -->
+```
+
+### Annotate and focus attention
+
+- **Draw on the slide** — a digital pen just works (its eraser end erases),
+  pressure-sensitive, with a mouse fallback (**P**). Rough strokes snap into
+  **perfect lines and circles**, and each slide keeps its ink. On the second
+  screen, press **A** to pop the slide up on your screen so you can draw on it —
+  the class sees every stroke live.
+- **Black out** the screen with **B** (**W** for white) to pull all eyes back to
+  you; press again to bring the slide back.
+- **Spotlight** with **S** — dim everything but a circle that follows your
+  pointer, to focus on one figure or line.
+- Overfull slides **auto-shrink to fit** and warn you, so nothing ever runs off
+  the edge mid-lesson.
 
 <div align="center">
 <img src="docs/screenshot-presenter.png" width="850" alt="Presenter mode: fullscreen slide with auto-fit warning" />
 </div>
 
-## 📄 Print & export
+---
 
-- **Page view** — Word-like sheets (A4 or US Letter) that show exactly how
-  your document fills printed pages while you type
-- **`\pagebreak`** forces a new page — in the preview, in print, and in PDF
-- **Print** (`Ctrl+P`), **print preview**, **Export to PDF** and **Export to
-  HTML** — all styled, math and code highlighting included
-- **Export to Word** (`.docx`) — a flowing, fully editable document that keeps
-  your active preview style, tables, lists, code, and page breaks; diagrams
-  and math come across as crisp images
-- **Export to PowerPoint** (`.pptx`) — one native slide per `---`, laid out
-  just like presenter mode. Overfull slides are auto-scaled to fit exactly as
-  Legilo shows them, and every text box also gets PowerPoint's own
-  shrink-to-fit — so nothing falls off the edge once you're in PowerPoint.
-  YouTube embeds become native online-video objects and local `.mp4` files
-  are embedded as playable media
+## 📄 Hand it out
+
+- **Page view** — Word-like A4 / US Letter sheets that show exactly how the
+  document fills printed pages while you type; `\pagebreak` forces a new page
+- **Print** (`Ctrl+P`), **print preview**, and **Export to PDF / HTML** — all
+  styled, with maths, code highlighting and diagrams
+- **Export to Word** (`.docx`) — a flowing, fully editable handout that keeps
+  your preview style, tables, lists, code and page breaks; diagrams and maths
+  come across as crisp images
+- **Export to PowerPoint** (`.pptx`) — one native slide per `---`, laid out just
+  like presenter mode, so colleagues can open your deck in PowerPoint. YouTube
+  links become native online-video objects and local `.mp4` files are embedded
+  as playable media
+
+---
 
 ## 🎨 Make it yours
 
 - **Light & dark themes** (`Ctrl+Shift+D`) — diagrams re-render to match
 - **Seven preview styles**: GitHub, Book (serif, print-friendly), Minimal,
-  Academic (auto-numbered sections), Slate, Typewriter, and Newspaper
-  (headline type and drop caps) — exports and PDFs follow the active style
+  Academic (auto-numbered sections), Slate, Typewriter, and Newspaper — exports
+  and PDFs follow the active style
 - **Bring your own CSS** — load any stylesheet targeting `.markdown-body`
-- Window size, theme, layout, and open tabs are remembered between sessions
+- Window size, theme, layout and open tabs are remembered between sessions
 
 <div align="center">
 <img src="docs/screenshot-slides-dark.png" width="850" alt="Dark theme with the slides preview layout" />
 </div>
+
+---
 
 ## Install
 
@@ -119,15 +193,15 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 </details>
 
 Releases are built for all three platforms by GitHub Actions: push a tag like
-`v0.2.0` (`npm version 0.2.0 && git push --follow-tags`) and the installers
+`v0.5.0` (`npm version 0.5.0 && git push --follow-tags`) and the installers
 appear on a draft GitHub release.
 
 ### Project layout
 
 ```
-main.js            # Electron main process: window, native menus, dialogs, printing
+main.js            # Electron main process: windows, second-screen window, menus, dialogs
 preload.js         # contextBridge API (contextIsolation + sandbox on)
-src/renderer.js    # editor, preview, presenter, pagination (bundled by esbuild)
+src/renderer.js    # editor, preview, presenter, dual-view sync, pagination (bundled by esbuild)
 renderer/          # app shell, styles, generated bundles
 ```
 
@@ -143,8 +217,12 @@ renderer/          # app shell, styles, generated bundles
 | `Ctrl+1` `2` `3` | Split / editor / preview |
 | `Ctrl+Shift+P` | Preview layout: flow / page / slides |
 | `Ctrl+Shift+D` | Dark theme |
-| `F5` | Presenter mode |
+| `F5` / `Shift+F5` | Present / present on a second screen |
+| `→` `←` `Space` | Next / previous (reveals `. . .` steps too) |
+| `PageDown` / `PageUp` | Next / previous (presentation remotes) |
 | `P` / `E` / `C` / `X` | While presenting: pen / eraser / pen colour / clear ink |
+| `B` / `W` / `S` | While presenting: black out / white out / spotlight |
+| `A` | Second-screen mode: pop up the slide to draw on it |
 
 ## License
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard, session } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard, session, screen } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const Store = require('electron-store');
@@ -13,6 +13,7 @@ const store = new Store({
 });
 
 let win = null;
+let audienceWin = null;
 let allowClose = false;
 
 function createWindow() {
@@ -59,6 +60,7 @@ function createWindow() {
 
   win.on('closed', () => {
     win = null;
+    closeAudienceWindow();
   });
 
   // Right-click menus: spelling fixes on misspellings; cut/copy + formatting
@@ -203,6 +205,7 @@ function buildMenu() {
         { label: 'Preview Only', accelerator: 'CmdOrCtrl+3', click: () => sendMenu('view-preview') },
         { type: 'separator' },
         { label: 'Presenter Mode', accelerator: 'F5', click: () => sendMenu('presenter') },
+        { label: 'Present on Second Screen', accelerator: 'Shift+F5', click: () => sendMenu('present-dual') },
         {
           label: 'Preview Layout',
           submenu: [
@@ -263,6 +266,77 @@ function buildMenu() {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ---------- audience window (dual-view presenting) ----------
+
+// Picks a display to put the audience slide on: the first one that isn't the
+// display the editor window currently sits on. Falls back to the primary.
+function audienceDisplay() {
+  const displays = screen.getAllDisplays();
+  if (win) {
+    const here = screen.getDisplayMatching(win.getBounds()).id;
+    const other = displays.find((d) => d.id !== here);
+    if (other) return other;
+  }
+  return screen.getPrimaryDisplay();
+}
+
+// Opens the fullscreen slide window on the second screen. Returns whether a
+// separate (non-editor) display was actually available.
+function openAudienceWindow() {
+  const display = audienceDisplay();
+  const hasSecondScreen = screen.getAllDisplays().length > 1;
+
+  if (audienceWin && !audienceWin.isDestroyed()) {
+    audienceWin.focus();
+    return hasSecondScreen;
+  }
+
+  const { x, y, width, height } = display.bounds;
+  audienceWin = new BrowserWindow({
+    x, y, width, height,
+    fullscreen: hasSecondScreen, // a lone screen stays a movable window
+    backgroundColor: store.get('theme') === 'dark' ? '#1e2227' : '#ffffff',
+    title: 'Legilo — Presenting',
+    icon: path.join(__dirname, 'logo', 'icon-256.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  audienceWin.loadFile(path.join(__dirname, 'renderer', 'index.html'), { search: 'role=audience' });
+
+  // Links behave the same as in the editor window: open externally, never
+  // navigate the slide away.
+  audienceWin.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  audienceWin.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault();
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+  });
+
+  // Once the slide window has loaded, tell the editor to push the first state.
+  audienceWin.webContents.on('did-finish-load', () => {
+    if (win && !win.isDestroyed()) win.webContents.send('menu', 'audience-ready');
+  });
+
+  audienceWin.on('closed', () => {
+    audienceWin = null;
+    if (win && !win.isDestroyed()) win.webContents.send('menu', 'audience-closed');
+  });
+
+  return hasSecondScreen;
+}
+
+function closeAudienceWindow() {
+  if (audienceWin && !audienceWin.isDestroyed()) audienceWin.close();
+  audienceWin = null;
 }
 
 // ---------- IPC ----------
@@ -486,6 +560,19 @@ ipcMain.handle('session:get', () => store.get('session', null));
 
 ipcMain.on('session:set', (_e, session) => {
   store.set('session', session);
+});
+
+// ---------- dual-view presenting ----------
+
+ipcMain.handle('presenter:open-audience', () => openAudienceWindow());
+
+ipcMain.on('presenter:close-audience', () => closeAudienceWindow());
+
+// Editor window pushes slide state; relay it to the audience window verbatim.
+ipcMain.on('presenter:sync', (_e, state) => {
+  if (audienceWin && !audienceWin.isDestroyed()) {
+    audienceWin.webContents.send('audience:state', state);
+  }
 });
 
 // ---------- lifecycle ----------

@@ -349,7 +349,7 @@ body.theme-dark .slide-card.overfull::before { color: #ff7b72; }
     overflow: visible;
     background: #fff;
   }
-  #toolbar, #workspace, #presenter { display: none !important; }
+  #toolbar, #workspace, #presenter, #present-console { display: none !important; }
   #print-root { display: block; }
 }
 
@@ -461,6 +461,121 @@ body.theme-dark #slide-stage { background: #161b22; }
 }
 
 #presenter-hud button:hover { background: #30363d; }
+
+/* ---- incremental reveal ("fly-in") ----
+   A slide splits on `. . .` lines into `.fragment` groups. Hidden fragments
+   keep their space (opacity, not display) so revealing never reflows the
+   slide; they fade + rise into view. Everywhere we want the whole slide at
+   once (previews, the "next" console card) every fragment gets `.shown`. */
+#slide .fragment,
+.slide-card-content .fragment {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+#slide .fragment:not(.shown),
+.slide-card-content .fragment:not(.shown) {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+/* ---- blackout / whiteout / spotlight / progress (over the slide) ---- */
+#slide-blackout { position: fixed; inset: 0; }
+#slide-blackout[hidden] { display: none; }
+#slide-blackout.black { background: #000; }
+#slide-blackout.white { background: #fff; }
+
+#slide-spotlight {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle 130px at var(--sx, 50%) var(--sy, 50%),
+    rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 115px, rgba(0, 0, 0, 0.74) 175px);
+}
+#slide-spotlight[hidden] { display: none; }
+
+#slide-progress {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+#slide-progress[hidden] { display: none; }
+#slide-progress-bar { height: 100%; width: 0; background: #4493f8; transition: width 0.3s; }
+
+/* ==========================================================================
+   Presenter console (editor window, dual-screen presenting)
+   ========================================================================== */
+
+:root { --console-h: 220px; }
+
+body.dual-presenting #workspace {
+  height: calc(100% - var(--toolbar-h) - var(--console-h));
+}
+
+#present-console {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--console-h);
+  box-sizing: border-box;
+  display: flex;
+  gap: 20px;
+  padding: 12px 16px;
+  background: var(--chrome-bg);
+  border-top: 1px solid var(--chrome-border);
+  z-index: 80;
+}
+#present-console[hidden] { display: none; }
+
+.pc-slides { display: flex; gap: 16px; flex: 0 0 auto; }
+.pc-slot { display: flex; flex-direction: column; gap: 4px; }
+.pc-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+.pc-card {
+  margin: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+.pc-card::after { display: none; } /* no slide-number badge on the minis */
+
+.pc-side { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pc-timer { display: flex; gap: 18px; align-items: baseline; font-variant-numeric: tabular-nums; }
+#pc-elapsed { font-size: 30px; font-weight: 600; cursor: pointer; }
+#pc-clock { font-size: 14px; opacity: 0.6; }
+.pc-notes {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  opacity: 0.85;
+}
+.pc-controls { display: flex; align-items: center; gap: 8px; }
+.pc-controls button {
+  border: 1px solid var(--chrome-border);
+  background: var(--pane-bg);
+  color: var(--chrome-fg);
+  border-radius: 6px;
+  font-size: 15px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.pc-controls button:hover { background: var(--divider); }
+.pc-controls button.active { border-color: #4493f8; background: #10305e; color: #fff; }
+#pc-counter { font-variant-numeric: tabular-nums; opacity: 0.7; min-width: 48px; text-align: center; }
+
+/* Audience window: nothing but the slide. */
+body.audience #toolbar,
+body.audience #workspace,
+body.audience #present-console,
+body.audience #presenter-hud { display: none !important; }
+body.audience #presenter { cursor: default; }
 
 /* ==========================================================================
    Preview — GitHub-flavored markdown (light base; .theme-dark overrides)
