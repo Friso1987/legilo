@@ -884,10 +884,12 @@ let aiRaw = '';
 let aiBuffer = '';
 let aiFlushQueued = false;
 
-// Output guardrail: a --- slide separator only splits a slide when it has a
-// blank line before and after (otherwise Markdown reads it as a heading). A
-// smaller model may ignore that instruction, so after generation we normalize
-// the inserted text to guarantee it — skipping any --- inside a code fence.
+// Output guardrail: Legilo's block markers only work with a blank line before
+// and after them — a --- otherwise reads as a heading, and canonical spacing
+// keeps a . . . pause matching the reveal syntax. A smaller model may ignore
+// that instruction, so after generation we normalize the inserted text to
+// guarantee it, canonicalizing each marker and skipping anything in a code
+// fence.
 function normalizeSlides(text) {
   const lines = text.split('\n');
   const out = [];
@@ -896,10 +898,14 @@ function normalizeSlides(text) {
     const line = lines[i];
     const trimmed = line.trim();
     const isFence = /^(```|~~~)/.test(trimmed);
-    const isSeparator = !inFence && !isFence && /^-{3,}$/.test(trimmed);
-    if (isSeparator) {
+    let marker = null;
+    if (!inFence && !isFence) {
+      if (/^-{3,}$/.test(trimmed)) marker = '---';                 // slide separator
+      else if (/^\.\s+\.\s+\.$/.test(trimmed)) marker = '. . .';   // reveal pause
+    }
+    if (marker) {
       if (out.length && out[out.length - 1].trim() !== '') out.push('');   // blank line before
-      out.push('---');
+      out.push(marker);
       if (i + 1 < lines.length && lines[i + 1].trim() !== '') out.push(''); // blank line after
     } else {
       out.push(line);
