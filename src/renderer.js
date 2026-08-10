@@ -840,12 +840,19 @@ document.getElementById('btn-help').addEventListener('click', () => showGuide())
 // it, and no text leaves the machine unless the user points at a remote server.
 // ---------------------------------------------------------------------------
 
-const AI_SYSTEM = 'You are helping a teacher write lesson material in Markdown for the Legilo editor. '
-  + 'Reply with Markdown only: no surrounding code fences, no preamble or sign-off. '
-  + 'Separate slides with a line containing only ---. '
-  + 'To reveal points one at a time, put a line containing only . . . between them. '
-  + 'Put speaker notes in <!-- note: ... --> comments. '
-  + 'Keep the language clear and appropriate for the classroom.';
+const AI_SYSTEM = [
+  'You are helping a teacher write lesson material in Markdown for the Legilo editor.',
+  'Reply with Markdown only: no code fence around the whole answer, no preamble or sign-off.',
+  'Legilo uses standard GitHub-flavored Markdown (headings, bold/italic, lists, tables, task lists like "- [ ]", footnotes) plus these Legilo-specific conventions — use them where they fit:',
+  '- Slides: a line containing only --- starts a new slide.',
+  '- Step-by-step reveal: a line containing only . . . (dot space dot space dot) pauses a slide, so whatever follows appears on the next click. Use it to reveal points one at a time.',
+  '- Speaker notes: write them inside <!-- note: ... --> comments. They show only to the presenter, never on the slide.',
+  '- Math: inline like $E = mc^2$ and display blocks with $$ ... $$ (KaTeX).',
+  '- Diagrams: fenced code blocks tagged mermaid or d2 render as diagrams — use them for flowcharts, timelines, cycles, and concept maps when a visual helps.',
+  '- Page break (for handouts and printing): a line containing only \\pagebreak.',
+  '- Video: a bare YouTube or Vimeo URL alone on its own line becomes an embedded player; a local clip is a link alone on a line, like [clip.mp4](clip.mp4).',
+  'Keep the language clear and appropriate for the classroom.',
+].join('\n');
 
 const AI_TEMPLATES = [
   { label: 'Custom prompt', fill: () => '' },
