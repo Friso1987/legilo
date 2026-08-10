@@ -843,6 +843,7 @@ document.getElementById('btn-help').addEventListener('click', () => showGuide())
 const AI_SYSTEM = [
   'You are helping a teacher write lesson material in Markdown for the Legilo editor.',
   'Reply with Markdown only: no code fence around the whole answer, no preamble or sign-off.',
+  'Use Markdown syntax, never raw HTML — write "# Heading", not "<h1>"; the editor does not render HTML tags.',
   'Legilo uses standard GitHub-flavored Markdown (headings, bold/italic, lists, tables, task lists like "- [ ]", footnotes) plus these Legilo-specific conventions — use them where they fit:',
   '- Slides: a line containing only --- starts a new slide.',
   '- Step-by-step reveal: a line containing only . . . (dot space dot space dot) pauses a slide, so whatever follows appears on the next click. Use it to reveal points one at a time.',
