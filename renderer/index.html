@@ -19,6 +19,7 @@
     </div>
     <div class="toolbar-right">
       <button id="btn-insert" title="Insert markdown: headings, images, tables, code…">Insert ▾</button>
+      <button id="btn-ai" title="Generate lesson content with a local AI model">✨ AI</button>
       <button id="btn-page" title="Cycle preview layout: flow / page / slides (Ctrl+Shift+P)">
         <span class="page-label">Flow</span>
       </button>
@@ -95,6 +96,58 @@
   </div>
 
   <article id="print-root" class="markdown-body"></article>
+
+  <div id="ai-panel" hidden>
+    <div class="ai-dialog">
+      <div class="ai-head">
+        <strong>Generate with AI</strong>
+        <span id="ai-status" class="ai-status"></span>
+        <button id="ai-close" title="Close">✕</button>
+      </div>
+
+      <div id="ai-setup" class="ai-setup" hidden>
+        <p>No local model is running. Legilo can use a private AI on your own
+           computer through <b>Ollama</b> — nothing leaves your machine:</p>
+        <ol>
+          <li>Install Ollama from <a href="https://ollama.com">ollama.com</a></li>
+          <li>Pull a model, e.g. <code>ollama pull llama3.1</code></li>
+          <li>It runs automatically at <code>localhost:11434</code></li>
+        </ol>
+        <button id="ai-recheck">Check again</button>
+      </div>
+
+      <div id="ai-body">
+        <div class="ai-row">
+          <label class="ai-field">Model
+            <select id="ai-model"></select>
+          </label>
+          <label class="ai-field">Template
+            <select id="ai-template"></select>
+          </label>
+        </div>
+        <textarea id="ai-prompt" rows="5"
+          placeholder="Describe what you want, e.g. “A 6-slide deck introducing photosynthesis for grade 8, with a quick question at the end.”"></textarea>
+        <div class="ai-row ai-actions">
+          <label><input type="radio" name="ai-target" value="cursor" checked /> Insert at cursor</label>
+          <label><input type="radio" name="ai-target" value="tab" /> New tab</label>
+          <span class="ai-spacer"></span>
+          <button id="ai-generate" class="ai-primary">Generate</button>
+        </div>
+        <details class="ai-adv">
+          <summary>Settings</summary>
+          <label class="ai-field">Server URL
+            <input id="ai-base" type="text" placeholder="http://localhost:11434/v1" />
+          </label>
+          <label class="ai-field">API key (optional)
+            <input id="ai-key" type="password" placeholder="leave blank for local Ollama" />
+          </label>
+          <p class="ai-hint">Any OpenAI-compatible server works: local Ollama or LM Studio, a machine on your network, or a cloud endpoint with a key.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-toast" hidden></div>
 
   <script src="bundle.js"></script>
 </body>

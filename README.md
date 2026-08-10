@@ -58,6 +58,28 @@ comes back the next time you open it. Start a new slide by putting a `---` line
 between sections, and use the Slides preview layout to flip through the deck
 while you write.
 
+## ✨ Draft it with AI (optional)
+
+Legilo can use a local AI model to help you draft lesson content, and because
+Markdown is exactly what these models are good at, the output drops straight
+into your slides. Ask for "a 6-slide deck introducing photosynthesis for grade
+8", turn a paragraph into step-by-step reveals, add speaker notes, write a few
+quiz questions, simplify a text for a younger group, or translate a slide. The
+result streams right into the editor.
+
+It runs on your own computer through [Ollama](https://ollama.com), so nothing
+you type leaves your machine. Install Ollama, pull a model
+(`ollama pull llama3.1`), and Legilo connects automatically. The **✨ AI**
+button then opens a small panel with ready-made teacher prompts and a model
+picker. If no model is running, Legilo just tells you how to set one up, and the
+rest of the app works exactly as before.
+
+You are not tied to your own machine: any OpenAI-compatible server works. From
+the panel's settings you can point Legilo at LM Studio, an Ollama running on
+another computer on your network (for example
+`http://192.168.1.50:11434/v1`), or a cloud endpoint, with an optional API key
+for servers that need one.
+
 ## 🎤 Teach it
 
 Press **F5** to present fullscreen, or **Shift+F5** to present on a second
@@ -214,6 +236,7 @@ renderer/          # app shell, styles, generated bundles
 | `Ctrl+P` / `Ctrl+E` | Print / export HTML |
 | `Ctrl+1` `2` `3` | Split / editor / preview |
 | `Ctrl+Shift+P` | Preview layout: flow / page / slides |
+| `Ctrl+Shift+A` | Open the AI panel |
 | `Ctrl+Shift+D` | Dark theme |
 | `F5` / `Shift+F5` | Present / present on a second screen |
 | `→` `←` `Space` | Next / previous (reveals `. . .` steps too) |

@@ -835,6 +835,169 @@ document.getElementById('btn-insert').addEventListener('click', () => window.leg
 document.getElementById('btn-help').addEventListener('click', () => showGuide());
 
 // ---------------------------------------------------------------------------
+// AI — optional local model (OpenAI-compatible) to draft lesson content.
+// Everything runs locally by default (Ollama); the app is fully usable without
+// it, and no text leaves the machine unless the user points at a remote server.
+// ---------------------------------------------------------------------------
+
+const AI_SYSTEM = 'You are helping a teacher write lesson material in Markdown for the Legilo editor. '
+  + 'Reply with Markdown only: no surrounding code fences, no preamble or sign-off. '
+  + 'Separate slides with a line containing only ---. '
+  + 'To reveal points one at a time, put a line containing only . . . between them. '
+  + 'Put speaker notes in <!-- note: ... --> comments. '
+  + 'Keep the language clear and appropriate for the classroom.';
+
+const AI_TEMPLATES = [
+  { label: 'Custom prompt', fill: () => '' },
+  { label: 'Slide deck', fill: () => 'Create a slide deck about: TOPIC.\nStart with a title slide, then 5–8 concise slides with short bullet points. Reveal key points one at a time with . . . where it helps.' },
+  { label: 'Speaker notes', fill: (sel) => `Add brief speaker notes as <!-- note: ... --> to these slides and return them:\n\n${sel || 'PASTE SLIDES HERE'}` },
+  { label: 'Quiz questions', fill: () => 'Write 5 quiz questions with short answers about: TOPIC.' },
+  { label: 'Simplify', fill: (sel) => `Rewrite this in simpler language for GRADE, keeping the meaning:\n\n${sel || 'PASTE TEXT HERE'}` },
+  { label: 'Translate', fill: (sel) => `Translate this Markdown to LANGUAGE, keeping all Markdown, --- and <!-- note --> intact:\n\n${sel || 'PASTE TEXT HERE'}` },
+];
+
+const aiPanel = document.getElementById('ai-panel');
+const aiStatusEl = document.getElementById('ai-status');
+const aiSetupEl = document.getElementById('ai-setup');
+const aiModelEl = document.getElementById('ai-model');
+const aiTemplateEl = document.getElementById('ai-template');
+const aiPromptEl = document.getElementById('ai-prompt');
+const aiBaseEl = document.getElementById('ai-base');
+const aiKeyEl = document.getElementById('ai-key');
+const aiGenerateBtn = document.getElementById('ai-generate');
+const btnAi = document.getElementById('btn-ai');
+
+let aiAvailable = false;
+let aiGenerating = false;
+let aiSavedModel = '';
+let aiInsertAt = 0;
+let aiBuffer = '';
+let aiFlushQueued = false;
+
+function aiSelectionText() {
+  const s = editorView.state.selection.main;
+  return editorView.state.sliceDoc(s.from, s.to);
+}
+
+async function refreshAiStatus() {
+  aiStatusEl.textContent = 'Checking…';
+  aiStatusEl.className = 'ai-status';
+  const st = await window.legilo.aiStatus();
+  aiAvailable = st.available;
+  aiModelEl.innerHTML = '';
+  if (st.available) {
+    aiStatusEl.textContent = 'Connected';
+    aiStatusEl.className = 'ai-status ok';
+    aiSetupEl.hidden = true;
+    for (const m of st.models) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      aiModelEl.appendChild(opt);
+    }
+    if (aiSavedModel && st.models.includes(aiSavedModel)) aiModelEl.value = aiSavedModel;
+  } else {
+    aiStatusEl.textContent = 'Not found';
+    aiStatusEl.className = 'ai-status bad';
+    aiSetupEl.hidden = false;
+  }
+  aiGenerateBtn.disabled = !(st.available && st.models?.length);
+}
+
+function openAiPanel() {
+  if (AUDIENCE) return;
+  aiPanel.hidden = false;
+  aiPromptEl.focus();
+  refreshAiStatus();
+}
+
+function closeAiPanel() { aiPanel.hidden = true; }
+
+let aiToastTimer = null;
+function aiToast(msg) {
+  const el = document.getElementById('ai-toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(aiToastTimer);
+  aiToastTimer = setTimeout(() => { el.hidden = true; }, 6000);
+}
+
+function setAiGenerating(on) {
+  aiGenerating = on;
+  btnAi.classList.toggle('generating', on);
+  btnAi.textContent = on ? '■ Stop' : '✨ AI';
+  btnAi.title = on ? 'Stop generating' : 'Generate lesson content with a local AI model';
+}
+
+function aiFlush() {
+  aiFlushQueued = false;
+  if (!aiBuffer) return;
+  const text = aiBuffer; aiBuffer = '';
+  editorView.dispatch({ changes: { from: aiInsertAt, insert: text }, scrollIntoView: true });
+  aiInsertAt += text.length;
+}
+
+function startGeneration() {
+  const prompt = aiPromptEl.value.trim();
+  if (!prompt || !aiAvailable) return;
+  const model = aiModelEl.value;
+  aiSavedModel = model;
+  window.legilo.setPref('aiModel', model);
+  const target = document.querySelector('input[name=ai-target]:checked').value;
+  closeAiPanel();
+  if (target === 'tab') newTab({ content: '' });
+  aiInsertAt = target === 'tab' ? editorView.state.doc.length : editorView.state.selection.main.head;
+  aiBuffer = '';
+  setAiGenerating(true);
+  window.legilo.aiGenerate({
+    model,
+    messages: [{ role: 'system', content: AI_SYSTEM }, { role: 'user', content: prompt }],
+  });
+}
+
+window.legilo.onAiChunk((text) => {
+  if (!aiGenerating) return;
+  aiBuffer += text;
+  if (!aiFlushQueued) { aiFlushQueued = true; requestAnimationFrame(aiFlush); }
+});
+window.legilo.onAiDone(() => { aiFlush(); setAiGenerating(false); });
+window.legilo.onAiError((msg) => { aiFlush(); setAiGenerating(false); aiToast(`AI error: ${msg}`); });
+
+btnAi.addEventListener('click', () => {
+  if (aiGenerating) { window.legilo.aiCancel(); return; }
+  openAiPanel();
+});
+document.getElementById('ai-close').addEventListener('click', closeAiPanel);
+document.getElementById('ai-recheck').addEventListener('click', refreshAiStatus);
+aiGenerateBtn.addEventListener('click', startGeneration);
+aiTemplateEl.addEventListener('change', () => {
+  const t = AI_TEMPLATES[Number(aiTemplateEl.value)] || AI_TEMPLATES[0];
+  aiPromptEl.value = t.fill(aiSelectionText());
+  aiPromptEl.focus();
+});
+aiBaseEl.addEventListener('change', () => {
+  window.legilo.setPref('aiBaseUrl', aiBaseEl.value.trim() || 'http://localhost:11434/v1');
+  refreshAiStatus();
+});
+aiKeyEl.addEventListener('change', () => {
+  window.legilo.setPref('aiApiKey', aiKeyEl.value);
+  refreshAiStatus();
+});
+aiPanel.addEventListener('click', (e) => { if (e.target === aiPanel) closeAiPanel(); });
+document.addEventListener('keydown', (e) => {
+  if (!aiPanel.hidden && e.key === 'Escape') { e.preventDefault(); closeAiPanel(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault();
+    openAiPanel();
+  }
+}, true);
+
+for (const [i, t] of AI_TEMPLATES.entries()) {
+  const opt = document.createElement('option');
+  opt.value = String(i); opt.textContent = t.label;
+  aiTemplateEl.appendChild(opt);
+}
+
+// ---------------------------------------------------------------------------
 // Draggable divider
 // ---------------------------------------------------------------------------
 
@@ -2036,6 +2199,16 @@ preview style you picked above:
 
 ---
 
+## Write with AI
+
+Press **✨ AI** (or **Ctrl+Shift+A**) to draft content with a local AI model:
+slide decks, speaker notes, quiz questions, simpler rewrites, translations. It
+runs on your own computer through [Ollama](https://ollama.com) — install it,
+run \`ollama pull llama3.1\`, and Legilo connects automatically. Without it, the
+panel just shows how to set it up and the rest of Legilo works as usual.
+
+---
+
 ## Never lose work
 
 **Auto-save** (on by default, under **File → Auto-save**) writes saved documents
@@ -2085,6 +2258,9 @@ async function init() {
   }
   applyPreviewMode(prefs.previewMode || 'flow');
   autoSaveEnabled = prefs.autoSave !== false;
+  aiSavedModel = prefs.aiModel || '';
+  aiBaseEl.value = prefs.aiBaseUrl || '';
+  aiKeyEl.value = prefs.aiApiKey || '';
 
   const recovery = await window.legilo.getRecovery();
   if (recovery?.tabs?.length) {

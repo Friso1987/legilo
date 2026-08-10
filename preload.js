@@ -33,4 +33,12 @@ contextBridge.exposeInMainWorld('legilo', {
   setTitle: (title) => ipcRenderer.send('window:set-title', title),
   getPrefs: () => ipcRenderer.invoke('prefs:get'),
   setPref: (key, value) => ipcRenderer.send('prefs:set', { key, value }),
+
+  // AI (optional local model)
+  aiStatus: () => ipcRenderer.invoke('ai:status'),
+  aiGenerate: (payload) => ipcRenderer.send('ai:generate', payload),
+  aiCancel: () => ipcRenderer.send('ai:cancel'),
+  onAiChunk: (cb) => ipcRenderer.on('ai:chunk', (_e, text) => cb(text)),
+  onAiDone: (cb) => ipcRenderer.on('ai:done', () => cb()),
+  onAiError: (cb) => ipcRenderer.on('ai:error', (_e, msg) => cb(msg)),
 });
