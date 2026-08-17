@@ -835,229 +835,6 @@ document.getElementById('btn-insert').addEventListener('click', () => window.leg
 document.getElementById('btn-help').addEventListener('click', () => showGuide());
 
 // ---------------------------------------------------------------------------
-// AI — optional local model (OpenAI-compatible) to draft lesson content.
-// Everything runs locally by default (Ollama); the app is fully usable without
-// it, and no text leaves the machine unless the user points at a remote server.
-// ---------------------------------------------------------------------------
-
-const AI_SYSTEM = [
-  'You are helping a teacher write lesson material in Markdown for the Legilo editor.',
-  'Reply with Markdown only: no code fence around the whole answer, no preamble or sign-off.',
-  'Use Markdown syntax, never raw HTML — write "# Heading", not "<h1>"; the editor does not render HTML tags.',
-  'Legilo uses standard GitHub-flavored Markdown (headings, bold/italic, lists, tables, task lists like "- [ ]", footnotes) plus these Legilo-specific conventions — use them where they fit:',
-  '- Slides: a line containing only --- starts a new slide. There MUST be a blank line both before and after the --- line — otherwise Markdown reads it as a heading and the slide is NOT split. Always surround --- with blank lines.',
-  '- Step-by-step reveal: a line containing only . . . (dot space dot space dot), with a blank line before and after it, pauses a slide so whatever follows appears on the next click. Use it to reveal points one at a time.',
-  '- Speaker notes: write them inside <!-- note: ... --> comments. They show only to the presenter, never on the slide.',
-  '- Math: inline like $E = mc^2$ and display blocks with $$ ... $$ (KaTeX).',
-  '- Diagrams: fenced code blocks tagged mermaid or d2 render as diagrams — use them for flowcharts, timelines, cycles, and concept maps when a visual helps.',
-  '- Page break (for handouts and printing): a line containing only \\pagebreak.',
-  '- Video: a bare YouTube or Vimeo URL alone on its own line becomes an embedded player; a local clip is a link alone on a line, like [clip.mp4](clip.mp4).',
-  'Keep the language clear and appropriate for the classroom.',
-].join('\n');
-
-const AI_TEMPLATES = [
-  { label: 'Custom prompt', fill: () => '' },
-  { label: 'Slide deck', fill: () => 'Create a slide deck about: TOPIC.\nStart with a title slide, then 5–8 concise slides with short bullet points. Reveal key points one at a time with . . . where it helps.' },
-  { label: 'Speaker notes', fill: (sel) => `Add brief speaker notes as <!-- note: ... --> to these slides and return them:\n\n${sel || 'PASTE SLIDES HERE'}` },
-  { label: 'Quiz questions', fill: () => 'Write 5 quiz questions with short answers about: TOPIC.' },
-  { label: 'Simplify', fill: (sel) => `Rewrite this in simpler language for GRADE, keeping the meaning:\n\n${sel || 'PASTE TEXT HERE'}` },
-  { label: 'Translate', fill: (sel) => `Translate this Markdown to LANGUAGE, keeping all Markdown, --- and <!-- note --> intact:\n\n${sel || 'PASTE TEXT HERE'}` },
-];
-
-const aiPanel = document.getElementById('ai-panel');
-const aiStatusEl = document.getElementById('ai-status');
-const aiSetupEl = document.getElementById('ai-setup');
-const aiModelEl = document.getElementById('ai-model');
-const aiTemplateEl = document.getElementById('ai-template');
-const aiPromptEl = document.getElementById('ai-prompt');
-const aiBaseEl = document.getElementById('ai-base');
-const aiKeyEl = document.getElementById('ai-key');
-const aiGenerateBtn = document.getElementById('ai-generate');
-const btnAi = document.getElementById('btn-ai');
-
-let aiAvailable = false;
-let aiGenerating = false;
-let aiSavedModel = '';
-let aiInsertAt = 0;
-let aiStart = 0;
-let aiRaw = '';
-let aiBuffer = '';
-let aiFlushQueued = false;
-
-// Output guardrail: Legilo's block markers only work with a blank line before
-// and after them — a --- otherwise reads as a heading, and canonical spacing
-// keeps a . . . pause matching the reveal syntax. A smaller model may ignore
-// that instruction, so after generation we normalize the inserted text to
-// guarantee it, canonicalizing each marker and skipping anything in a code
-// fence.
-function normalizeSlides(text) {
-  const lines = text.split('\n');
-  const out = [];
-  let inFence = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    const isFence = /^(```|~~~)/.test(trimmed);
-    let marker = null;
-    if (!inFence && !isFence) {
-      if (/^-{3,}$/.test(trimmed)) marker = '---';                 // slide separator
-      else if (/^\.\s+\.\s+\.$/.test(trimmed)) marker = '. . .';   // reveal pause
-    }
-    if (marker) {
-      if (out.length && out[out.length - 1].trim() !== '') out.push('');   // blank line before
-      out.push(marker);
-      if (i + 1 < lines.length && lines[i + 1].trim() !== '') out.push(''); // blank line after
-    } else {
-      out.push(line);
-    }
-    if (isFence) inFence = !inFence;
-  }
-  return out.join('\n');
-}
-
-// Rewrites the just-inserted AI text in place with the normalized version,
-// but only if the user hasn't edited that region while it streamed in.
-function finalizeAiInsertion() {
-  if (!aiRaw) return;
-  const end = aiStart + aiRaw.length;
-  if (end <= editorView.state.doc.length
-      && editorView.state.doc.sliceString(aiStart, end) === aiRaw) {
-    const fixed = normalizeSlides(aiRaw);
-    if (fixed !== aiRaw) {
-      editorView.dispatch({ changes: { from: aiStart, to: end, insert: fixed } });
-    }
-  }
-  aiRaw = '';
-}
-
-function aiSelectionText() {
-  const s = editorView.state.selection.main;
-  return editorView.state.sliceDoc(s.from, s.to);
-}
-
-async function refreshAiStatus() {
-  aiStatusEl.textContent = 'Checking…';
-  aiStatusEl.className = 'ai-status';
-  const st = await window.legilo.aiStatus();
-  aiAvailable = st.available;
-  aiModelEl.innerHTML = '';
-  if (st.available) {
-    aiStatusEl.textContent = 'Connected';
-    aiStatusEl.className = 'ai-status ok';
-    aiSetupEl.hidden = true;
-    for (const m of st.models) {
-      const opt = document.createElement('option');
-      opt.value = m; opt.textContent = m;
-      aiModelEl.appendChild(opt);
-    }
-    if (aiSavedModel && st.models.includes(aiSavedModel)) aiModelEl.value = aiSavedModel;
-  } else {
-    aiStatusEl.textContent = 'Not found';
-    aiStatusEl.className = 'ai-status bad';
-    aiSetupEl.hidden = false;
-  }
-  aiGenerateBtn.disabled = !(st.available && st.models?.length);
-}
-
-function openAiPanel() {
-  if (AUDIENCE) return;
-  aiPanel.hidden = false;
-  aiPromptEl.focus();
-  refreshAiStatus();
-}
-
-function closeAiPanel() { aiPanel.hidden = true; }
-
-let aiToastTimer = null;
-function aiToast(msg) {
-  const el = document.getElementById('ai-toast');
-  el.textContent = msg;
-  el.hidden = false;
-  clearTimeout(aiToastTimer);
-  aiToastTimer = setTimeout(() => { el.hidden = true; }, 6000);
-}
-
-function setAiGenerating(on) {
-  aiGenerating = on;
-  btnAi.classList.toggle('generating', on);
-  btnAi.textContent = on ? '■ Stop' : '✨ AI';
-  btnAi.title = on ? 'Stop generating' : 'Generate lesson content with a local AI model';
-}
-
-function aiFlush() {
-  aiFlushQueued = false;
-  if (!aiBuffer) return;
-  const text = aiBuffer; aiBuffer = '';
-  editorView.dispatch({ changes: { from: aiInsertAt, insert: text }, scrollIntoView: true });
-  aiInsertAt += text.length;
-}
-
-function startGeneration() {
-  const prompt = aiPromptEl.value.trim();
-  if (!prompt || !aiAvailable) return;
-  const model = aiModelEl.value;
-  aiSavedModel = model;
-  window.legilo.setPref('aiModel', model);
-  const target = document.querySelector('input[name=ai-target]:checked').value;
-  closeAiPanel();
-  if (target === 'tab') newTab({ content: '' });
-  aiInsertAt = target === 'tab' ? editorView.state.doc.length : editorView.state.selection.main.head;
-  aiStart = aiInsertAt;
-  aiRaw = '';
-  aiBuffer = '';
-  setAiGenerating(true);
-  window.legilo.aiGenerate({
-    model,
-    messages: [{ role: 'system', content: AI_SYSTEM }, { role: 'user', content: prompt }],
-  });
-}
-
-window.legilo.onAiChunk((text) => {
-  if (!aiGenerating) return;
-  aiRaw += text;
-  aiBuffer += text;
-  if (!aiFlushQueued) { aiFlushQueued = true; requestAnimationFrame(aiFlush); }
-});
-window.legilo.onAiDone(() => { aiFlush(); finalizeAiInsertion(); setAiGenerating(false); });
-window.legilo.onAiError((msg) => { aiFlush(); finalizeAiInsertion(); setAiGenerating(false); aiToast(`AI error: ${msg}`); });
-
-btnAi.addEventListener('click', () => {
-  if (aiGenerating) { window.legilo.aiCancel(); return; }
-  openAiPanel();
-});
-document.getElementById('ai-close').addEventListener('click', closeAiPanel);
-document.getElementById('ai-recheck').addEventListener('click', refreshAiStatus);
-document.getElementById('ai-refresh').addEventListener('click', refreshAiStatus);
-aiGenerateBtn.addEventListener('click', startGeneration);
-aiTemplateEl.addEventListener('change', () => {
-  const t = AI_TEMPLATES[Number(aiTemplateEl.value)] || AI_TEMPLATES[0];
-  aiPromptEl.value = t.fill(aiSelectionText());
-  aiPromptEl.focus();
-});
-aiBaseEl.addEventListener('change', () => {
-  window.legilo.setPref('aiBaseUrl', aiBaseEl.value.trim() || 'http://localhost:11434/v1');
-  refreshAiStatus();
-});
-aiKeyEl.addEventListener('change', () => {
-  window.legilo.setPref('aiApiKey', aiKeyEl.value);
-  refreshAiStatus();
-});
-aiPanel.addEventListener('click', (e) => { if (e.target === aiPanel) closeAiPanel(); });
-document.addEventListener('keydown', (e) => {
-  if (!aiPanel.hidden && e.key === 'Escape') { e.preventDefault(); closeAiPanel(); return; }
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
-    e.preventDefault();
-    openAiPanel();
-  }
-}, true);
-
-for (const [i, t] of AI_TEMPLATES.entries()) {
-  const opt = document.createElement('option');
-  opt.value = String(i); opt.textContent = t.label;
-  aiTemplateEl.appendChild(opt);
-}
-
-// ---------------------------------------------------------------------------
 // Draggable divider
 // ---------------------------------------------------------------------------
 
@@ -2210,9 +1987,7 @@ Insert menu.
 ## Slides
 
 A \`---\` line starts a new slide for **presenter mode**: press **F5**
-to present this document, ←/→ to navigate, Esc to leave. Keep a **blank line
-above** the \`---\` — without it, Markdown reads it as a heading instead of a
-slide break.
+to present this document, ←/→ to navigate, Esc to leave.
 
 **Reveal text step by step.** A line of just \`. . .\` (three dots) is a
 pause: everything after it stays hidden until your next click, so you can
@@ -2258,16 +2033,6 @@ preview style you picked above:
   size carry over
 - **PowerPoint (.pptx)** — one slide per \`---\`, laid out like presenter
   mode. If a slide is too full it's scaled to fit, exactly as Legilo shows it.
-
----
-
-## Write with AI
-
-Press **✨ AI** (or **Ctrl+Shift+A**) to draft content with a local AI model:
-slide decks, speaker notes, quiz questions, simpler rewrites, translations. It
-runs on your own computer through [Ollama](https://ollama.com) — install it,
-run \`ollama pull llama3.1\`, and Legilo connects automatically. Without it, the
-panel just shows how to set it up and the rest of Legilo works as usual.
 
 ---
 
@@ -2320,9 +2085,6 @@ async function init() {
   }
   applyPreviewMode(prefs.previewMode || 'flow');
   autoSaveEnabled = prefs.autoSave !== false;
-  aiSavedModel = prefs.aiModel || '';
-  aiBaseEl.value = prefs.aiBaseUrl || '';
-  aiKeyEl.value = prefs.aiApiKey || '';
 
   const recovery = await window.legilo.getRecovery();
   if (recovery?.tabs?.length) {

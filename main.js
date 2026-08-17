@@ -550,12 +550,9 @@ ipcMain.handle('prefs:get', () => ({
   customCssPath: store.get('customCssPath', null),
   showGuideOnStartup: store.get('showGuideOnStartup'),
   autoSave: store.get('autoSave', true),
-  aiBaseUrl: store.get('aiBaseUrl', AI_DEFAULT_BASE),
-  aiModel: store.get('aiModel', ''),
-  aiApiKey: store.get('aiApiKey', ''),
 }));
 
-const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize', 'previewStyle', 'aiBaseUrl', 'aiModel', 'aiApiKey'];
+const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize', 'previewStyle'];
 const MENU_PREF_KEYS = ['previewMode', 'paperSize', 'previewStyle'];
 
 ipcMain.on('prefs:set', (_e, { key, value }) => {
@@ -583,95 +580,6 @@ ipcMain.handle('recovery:get', () => store.get('recovery', null));
 
 ipcMain.on('recovery:clear', () => {
   store.delete('recovery');
-});
-
-// ---------- AI (optional, local-first, OpenAI-compatible API) ----------
-//
-// All requests go through the main process so the renderer's CSP stays strict.
-// Default target is Ollama's OpenAI-compatible endpoint; any compatible server
-// (LM Studio, llama.cpp, …) works by changing the base URL. The app is fully
-// usable without any of this: ai:status just reports "unavailable".
-
-const AI_DEFAULT_BASE = 'http://localhost:11434/v1';
-
-function aiBase() {
-  return (store.get('aiBaseUrl', AI_DEFAULT_BASE) || AI_DEFAULT_BASE).replace(/\/+$/, '');
-}
-
-// Optional bearer token, for remote/cloud servers that require auth. Local
-// Ollama needs none.
-function aiHeaders(extra) {
-  const headers = { ...(extra || {}) };
-  const key = store.get('aiApiKey', '');
-  if (key) headers.Authorization = `Bearer ${key}`;
-  return headers;
-}
-
-let aiAbort = null;
-
-// Lists available models; doubles as the "is a local model reachable?" check.
-ipcMain.handle('ai:status', async () => {
-  const base = aiBase();
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 2500);
-    const res = await fetch(`${base}/models`, { headers: aiHeaders(), signal: ctrl.signal });
-    clearTimeout(timer);
-    if (!res.ok) return { available: false, error: `HTTP ${res.status}`, base };
-    const data = await res.json();
-    const models = (data?.data || []).map((m) => m.id).filter(Boolean);
-    return { available: true, models, base };
-  } catch (e) {
-    return { available: false, error: String(e?.message || e), base };
-  }
-});
-
-ipcMain.on('ai:cancel', () => { if (aiAbort) aiAbort.abort(); });
-
-// Streams a chat completion, forwarding token deltas to the renderer.
-ipcMain.on('ai:generate', async (e, { model, messages }) => {
-  const wc = e.sender;
-  if (aiAbort) aiAbort.abort();
-  aiAbort = new AbortController();
-  try {
-    const res = await fetch(`${aiBase()}/chat/completions`, {
-      method: 'POST',
-      headers: aiHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ model, messages, stream: true }),
-      signal: aiAbort.signal,
-    });
-    if (!res.ok || !res.body) {
-      const txt = await res.text().catch(() => '');
-      wc.send('ai:error', `HTTP ${res.status} ${txt}`.trim());
-      return;
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') { wc.send('ai:done'); return; }
-        try {
-          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-          if (delta) wc.send('ai:chunk', delta);
-        } catch (_) { /* skip a malformed SSE line */ }
-      }
-    }
-    wc.send('ai:done');
-  } catch (err) {
-    if (aiAbort?.signal.aborted) wc.send('ai:done');
-    else wc.send('ai:error', String(err?.message || err));
-  } finally {
-    aiAbort = null;
-  }
 });
 
 // ---------- dual-view presenting ----------
