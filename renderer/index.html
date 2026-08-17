@@ -19,6 +19,7 @@
     </div>
     <div class="toolbar-right">
       <button id="btn-insert" title="Insert markdown: headings, images, tables, code…">Insert ▾</button>
+      <button id="btn-chat" title="Chat settings — the model that answers live in ```chat blocks">💬</button>
       <button id="btn-page" title="Cycle preview layout: flow / page / slides (Ctrl+Shift+P)">
         <span class="page-label">Flow</span>
       </button>
@@ -95,6 +96,48 @@
   </div>
 
   <article id="print-root" class="markdown-body"></article>
+
+  <div id="chat-settings" hidden>
+    <div class="cs-dialog">
+      <div class="cs-head">
+        <strong>Chat settings</strong>
+        <span id="cs-status" class="cs-status"></span>
+        <button id="cs-close" title="Close">✕</button>
+      </div>
+
+      <label class="cs-field">Server
+        <input id="cs-base" type="text" spellcheck="false"
+               placeholder="http://localhost:11434/v1" />
+      </label>
+      <p class="cs-hint">Any OpenAI-compatible server: Ollama on this computer,
+        a machine on your Tailscale network (<code>http://spark:11434/v1</code>),
+        LM Studio, or a cloud endpoint.</p>
+
+      <div class="cs-row">
+        <label class="cs-field cs-grow">Model
+          <select id="cs-model"></select>
+        </label>
+        <button id="cs-refresh" title="Reconnect and reload the model list">Reconnect</button>
+      </div>
+
+      <label class="cs-field">API key (optional)
+        <input id="cs-key" type="password" placeholder="leave blank for a local or Tailscale server" />
+      </label>
+
+      <label class="cs-field">Instructions for the model
+        <textarea id="cs-system" rows="4"
+          placeholder="How should it answer? e.g. “You are a friendly biology tutor for grade 8. Answer in two short sentences.”"></textarea>
+      </label>
+      <p class="cs-hint">Used by every chat block. A single block can override it
+        with its own <code>@system:</code> line.</p>
+
+      <div class="cs-actions">
+        <button id="cs-insert">Insert a chat block</button>
+        <span class="cs-spacer"></span>
+        <button id="cs-done" class="cs-primary">Done</button>
+      </div>
+    </div>
+  </div>
 
   <script src="bundle.js"></script>
 </body>

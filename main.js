@@ -143,6 +143,7 @@ function insertMenuTemplate() {
     { label: 'Mermaid Diagram', click: () => sendMenu('insert:mermaid') },
     { label: 'D2 Diagram', click: () => sendMenu('insert:d2') },
     { label: 'Video (YouTube/Vimeo)…', click: () => sendMenu('insert:video') },
+    { label: 'Chat Conversation', click: () => sendMenu('insert:chat') },
     { label: 'Table', click: () => sendMenu('insert:table') },
     { label: 'Task List', click: () => sendMenu('insert:tasklist') },
     { label: 'Quote', click: () => sendMenu('insert:quote') },
@@ -550,9 +551,16 @@ ipcMain.handle('prefs:get', () => ({
   customCssPath: store.get('customCssPath', null),
   showGuideOnStartup: store.get('showGuideOnStartup'),
   autoSave: store.get('autoSave', true),
+  chatBaseUrl: store.get('chatBaseUrl', CHAT_DEFAULT_BASE),
+  chatModel: store.get('chatModel', ''),
+  chatApiKey: store.get('chatApiKey', ''),
+  chatSystem: store.get('chatSystem', CHAT_DEFAULT_SYSTEM),
 }));
 
-const PREF_KEYS = ['theme', 'viewMode', 'previewMode', 'paperSize', 'previewStyle'];
+const PREF_KEYS = [
+  'theme', 'viewMode', 'previewMode', 'paperSize', 'previewStyle',
+  'chatBaseUrl', 'chatModel', 'chatApiKey', 'chatSystem',
+];
 const MENU_PREF_KEYS = ['previewMode', 'paperSize', 'previewStyle'];
 
 ipcMain.on('prefs:set', (_e, { key, value }) => {
@@ -580,6 +588,114 @@ ipcMain.handle('recovery:get', () => store.get('recovery', null));
 
 ipcMain.on('recovery:clear', () => {
   store.delete('recovery');
+});
+
+// ---------- live chat blocks (OpenAI-compatible model server) ----------
+//
+// ```chat fences can hold a live turn: the renderer asks a model to write the
+// reply. Requests are made here in the main process, so the renderer keeps its
+// strict CSP and no page script ever touches the API key. Any OpenAI-compatible
+// server works — Ollama on this machine, a box on the Tailscale network, or a
+// cloud endpoint with a key. Without a server, chat blocks still render as a
+// plain scripted conversation.
+
+const CHAT_DEFAULT_BASE = 'http://localhost:11434/v1';
+const CHAT_DEFAULT_SYSTEM =
+  'You are a guest in a live classroom presentation. Answer the question on the '
+  + 'slide in at most three short sentences, in plain language, with no preamble '
+  + 'and no follow-up questions. Markdown is allowed for emphasis and short lists.';
+
+function chatBase() {
+  return (store.get('chatBaseUrl', CHAT_DEFAULT_BASE) || CHAT_DEFAULT_BASE).replace(/\/+$/, '');
+}
+
+// Optional bearer token, for servers that require auth. A local or Tailscale
+// Ollama needs none.
+function chatHeaders(extra) {
+  const headers = { ...(extra || {}) };
+  const key = store.get('chatApiKey', '');
+  if (key) headers.Authorization = `Bearer ${key}`;
+  return headers;
+}
+
+// Embedding models can't chat; keep them out of the picker.
+const EMBEDDING_RE = /embed|^bge-|^gte-|reranker/i;
+
+// Lists the models the server offers; doubles as the "is it reachable?" check.
+ipcMain.handle('chat:models', async () => {
+  const base = chatBase();
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(`${base}/models`, { headers: chatHeaders(), signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, base };
+    const data = await res.json();
+    const models = (data?.data || [])
+      .map((m) => m.id)
+      .filter((id) => id && !EMBEDDING_RE.test(id))
+      .sort();
+    return { ok: true, models, base };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e), base };
+  }
+});
+
+// One in-flight request per chat block, keyed by the block's id, so several
+// conversations on a slide can answer at the same time.
+const chatRequests = new Map();
+
+ipcMain.on('chat:cancel', (_e, { id }) => {
+  chatRequests.get(id)?.abort();
+  chatRequests.delete(id);
+});
+
+// Streams a reply, forwarding token deltas to the renderer as they arrive so
+// the bubble types itself out in front of the class.
+ipcMain.on('chat:send', async (e, { id, model, messages }) => {
+  const wc = e.sender;
+  chatRequests.get(id)?.abort();
+  const ctrl = new AbortController();
+  chatRequests.set(id, ctrl);
+  try {
+    const res = await fetch(`${chatBase()}/chat/completions`, {
+      method: 'POST',
+      headers: chatHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ model, messages, stream: true }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok || !res.body) {
+      const txt = await res.text().catch(() => '');
+      wc.send('chat:error', { id, message: `HTTP ${res.status} ${txt}`.trim() });
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') { wc.send('chat:done', { id }); return; }
+        try {
+          const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+          if (delta) wc.send('chat:chunk', { id, text: delta });
+        } catch (_) { /* skip a malformed SSE line */ }
+      }
+    }
+    wc.send('chat:done', { id });
+  } catch (err) {
+    if (ctrl.signal.aborted) wc.send('chat:done', { id });
+    else wc.send('chat:error', { id, message: String(err?.message || err) });
+  } finally {
+    if (chatRequests.get(id) === ctrl) chatRequests.delete(id);
+  }
 });
 
 // ---------- dual-view presenting ----------

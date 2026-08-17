@@ -349,8 +349,124 @@ body.theme-dark .slide-card.overfull::before { color: #ff7b72; }
     overflow: visible;
     background: #fff;
   }
-  #toolbar, #workspace, #presenter, #present-console { display: none !important; }
+  #toolbar, #workspace, #presenter, #present-console, #chat-settings { display: none !important; }
   #print-root { display: block; }
+  #print-root .chat-input { display: none; }
+  #print-root .chat-log { max-height: none; overflow: visible; }
+}
+
+/* ---- chat settings dialog (💬) ---- */
+
+#chat-settings {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+#chat-settings[hidden] { display: none; }
+
+.cs-dialog {
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--chrome-border);
+  border-radius: 10px;
+  background: var(--pane-bg);
+  color: var(--chrome-fg);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+.cs-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cs-head strong { font-size: 15px; }
+
+.cs-head #cs-close {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.cs-status { font-size: 12px; opacity: 0.75; }
+.cs-status.ok { color: #1a7f37; opacity: 1; }
+.cs-status.bad { color: #d1242f; opacity: 1; }
+body.theme-dark .cs-status.ok { color: #3fb950; }
+body.theme-dark .cs-status.bad { color: #ff7b72; }
+
+.cs-field {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.cs-field input,
+.cs-field select,
+.cs-field textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--chrome-fg);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.cs-field textarea { resize: vertical; line-height: 1.45; }
+
+.cs-row { display: flex; align-items: flex-end; gap: 8px; }
+.cs-grow { flex: 1; min-width: 0; }
+
+.cs-hint {
+  margin: -4px 0 12px;
+  font-size: 11.5px;
+  opacity: 0.65;
+  line-height: 1.5;
+}
+
+.cs-hint code {
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.cs-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.cs-spacer { flex: 1; }
+
+#chat-settings button {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--chrome-fg);
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#chat-settings button:hover { background: var(--btn-hover); }
+
+#chat-settings .cs-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
 }
 
 /* ==========================================================================
@@ -990,6 +1106,180 @@ body.theme-dark.style-newspaper .markdown-body h2 { border-bottom-color: #e6edf3
   margin-left: auto;
   margin-right: auto;
 }
+
+/* ---- chat blocks (```chat) — a messenger window inside the document ---- */
+
+.markdown-body .chat-block {
+  margin: 0 0 1em;
+  border: 1px solid #d1d9e0;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+  break-inside: avoid;
+  text-align: left;
+}
+
+.markdown-body .chat-head {
+  padding: 0.35em 0.8em;
+  background: #f6f8fa;
+  border-bottom: 1px solid #d1d9e0;
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #59636e;
+}
+
+.markdown-body .chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  padding: 0.8em;
+  overflow-y: auto;
+}
+
+.markdown-body .chat-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+}
+
+.markdown-body .chat-msg.chat-you { align-self: flex-end; align-items: flex-end; }
+.markdown-body .chat-msg.chat-ai { align-self: flex-start; align-items: flex-start; }
+
+.markdown-body .chat-name {
+  font-size: 0.7em;
+  color: #59636e;
+  padding: 0 0.6em 0.15em;
+}
+
+.markdown-body .chat-bubble {
+  padding: 0.45em 0.8em;
+  border-radius: 1.1em;
+  background: #eef1f5;
+  color: #1f2328;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body .chat-you .chat-bubble {
+  background: #0969da;
+  color: #ffffff;
+  border-bottom-right-radius: 0.25em;
+}
+
+.markdown-body .chat-ai .chat-bubble { border-bottom-left-radius: 0.25em; }
+
+.markdown-body .chat-you .chat-bubble a,
+.markdown-body .chat-you .chat-bubble code { color: #ffffff; }
+
+.markdown-body .chat-bubble > :first-child { margin-top: 0; }
+.markdown-body .chat-bubble > :last-child { margin-bottom: 0; }
+.markdown-body .chat-bubble p { margin: 0 0 0.4em; }
+.markdown-body .chat-bubble ul,
+.markdown-body .chat-bubble ol { margin: 0.2em 0; padding-left: 1.2em; }
+
+/* waiting for the model: three pulsing dots */
+.markdown-body .chat-dots { display: inline-flex; gap: 0.25em; padding: 0.15em 0; }
+.markdown-body .chat-dots i {
+  width: 0.4em;
+  height: 0.4em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: chat-dot 1.2s infinite;
+}
+.markdown-body .chat-dots i:nth-child(2) { animation-delay: 0.2s; }
+.markdown-body .chat-dots i:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes chat-dot {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 0.9; transform: translateY(-0.15em); }
+}
+
+.markdown-body .chat-ask {
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0.1em 0.5em;
+  border: 1px solid #d1d9e0;
+  border-radius: 0.8em;
+  background: #ffffff;
+  color: #0969da;
+  cursor: pointer;
+}
+.markdown-body .chat-ask:hover { background: #eaeef2; }
+
+.markdown-body .chat-error {
+  padding: 0 0.9em 0.6em;
+  font-size: 0.75em;
+  color: #d1242f;
+}
+.markdown-body .chat-error[hidden] { display: none; }
+
+.markdown-body .chat-input {
+  display: flex;
+  gap: 0.4em;
+  padding: 0.5em 0.6em;
+  border-top: 1px solid #d1d9e0;
+  background: #f6f8fa;
+}
+
+.markdown-body .chat-input .chat-text {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0.35em 0.7em;
+  border: 1px solid #d1d9e0;
+  border-radius: 1em;
+  background: #ffffff;
+  color: #1f2328;
+}
+.markdown-body .chat-input .chat-text:focus { outline: 2px solid #0969da55; }
+
+.markdown-body .chat-input .chat-send {
+  font: inherit;
+  font-size: 0.85em;
+  padding: 0.3em 0.9em;
+  border: 0;
+  border-radius: 1em;
+  background: #0969da;
+  color: #ffffff;
+  cursor: pointer;
+}
+.markdown-body .chat-input .chat-send:hover { background: #0860c4; }
+
+/* On a slide the window is a fixed-height panel that scrolls internally: the
+   deck's layout never shifts, however long the live answer turns out to be. */
+#slide .chat-log,
+.slide-card-content .chat-log {
+  height: 7.5em;
+  scrollbar-width: none; /* it scrolls itself to the newest message */
+}
+#slide .chat-log::-webkit-scrollbar,
+.slide-card-content .chat-log::-webkit-scrollbar { display: none; }
+
+/* Messages arrive one click at a time while presenting (see applyReveal).
+   Unlike slide fragments they are removed rather than faded, so the thread
+   grows downwards from the bottom the way a messenger app does. */
+#slide .chat-msg:not(.shown),
+.slide-card-content .chat-msg:not(.shown) { display: none; }
+
+#slide .chat-msg.shown { animation: chat-in 0.28s ease both; }
+
+@keyframes chat-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+body.theme-dark .markdown-body .chat-block { background: #1e2227; border-color: #30363d; }
+body.theme-dark .markdown-body .chat-head { background: #161b22; border-bottom-color: #30363d; color: #9198a1; }
+body.theme-dark .markdown-body .chat-name { color: #9198a1; }
+body.theme-dark .markdown-body .chat-bubble { background: #2a3038; color: #e6edf3; }
+body.theme-dark .markdown-body .chat-you .chat-bubble { background: #1f6feb; color: #ffffff; }
+body.theme-dark .markdown-body .chat-ask { background: #21262d; border-color: #30363d; color: #4493f8; }
+body.theme-dark .markdown-body .chat-ask:hover { background: #30363d; }
+body.theme-dark .markdown-body .chat-input { background: #161b22; border-top-color: #30363d; }
+body.theme-dark .markdown-body .chat-input .chat-text { background: #0d1117; border-color: #30363d; color: #e6edf3; }
+body.theme-dark .markdown-body .chat-error { color: #ff7b72; }
 
 /* footnotes */
 .markdown-body .footnotes {

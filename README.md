@@ -96,6 +96,39 @@ your next click, and then fades in.
 > Where does this happen?
 ```
 
+### Chat with an AI, live on the slide
+
+A `chat` block turns into a chat window on your slide — the conversation
+appears one message per click, like a messenger app, and the model you're
+connected to writes the answers there and then.
+
+````markdown
+```chat
+@title: Biology helpdesk
+@system: You are a friendly tutor. Answer in two short sentences.
+
+me: What is photosynthesis?
+ai: Plants use sunlight, water and CO₂ to make sugar, and give off oxygen.
+me: Why are leaves green?
+ai: ?
+```
+````
+
+`me:` is you, `ai:` is the model. An `ai:` line left empty (or `ai: ?`) is
+answered live while you present, and the box at the bottom of the window takes
+whatever your class asks next — the reply streams onto your screen and the
+projector at the same time.
+
+You decide how it answers: `@system:` sets the instructions for one
+conversation ("a sceptical historian", "reply in Dutch, one sentence"), and the
+**💬** button in the toolbar sets the default instructions, the server and the
+model for every block.
+
+Any server that speaks the OpenAI API works — Ollama on your own machine, a
+computer on your Tailscale network, LM Studio, or a cloud endpoint with an API
+key. Nothing is sent anywhere until a live turn actually runs, and without a
+server the scripted conversation still plays as written.
+
 ### Notes only you can see
 
 Put reminders to yourself in `<!-- note: … -->`. They show up on your console
@@ -197,10 +230,11 @@ up on a draft GitHub release.
 ### Project layout
 
 ```
-main.js            # Electron main process: windows, second-screen window, menus, dialogs
+main.js            # Electron main process: windows, second-screen window, menus, dialogs, chat requests
 preload.js         # contextBridge API (contextIsolation + sandbox on)
-src/renderer.js    # editor, preview, presenter, dual-view sync, pagination (bundled by esbuild)
+src/renderer.js    # editor, preview, presenter, dual-view sync, pagination, chat blocks (bundled by esbuild)
 renderer/          # app shell, styles, generated bundles
+scripts/           # asset copying, Store art, headless smoke tests
 ```
 
 ## Keyboard shortcuts

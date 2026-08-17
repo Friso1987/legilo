@@ -33,4 +33,12 @@ contextBridge.exposeInMainWorld('legilo', {
   setTitle: (title) => ipcRenderer.send('window:set-title', title),
   getPrefs: () => ipcRenderer.invoke('prefs:get'),
   setPref: (key, value) => ipcRenderer.send('prefs:set', { key, value }),
+
+  // live chat blocks
+  chatModels: () => ipcRenderer.invoke('chat:models'),
+  chatSend: (payload) => ipcRenderer.send('chat:send', payload),
+  chatCancel: (id) => ipcRenderer.send('chat:cancel', { id }),
+  onChatChunk: (cb) => ipcRenderer.on('chat:chunk', (_e, msg) => cb(msg)),
+  onChatDone: (cb) => ipcRenderer.on('chat:done', (_e, msg) => cb(msg)),
+  onChatError: (cb) => ipcRenderer.on('chat:error', (_e, msg) => cb(msg)),
 });

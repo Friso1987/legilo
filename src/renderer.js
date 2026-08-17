@@ -35,6 +35,10 @@ const md = new MarkdownIt({
       // Placeholder; hydrateDiagrams() swaps it for the rendered SVG.
       return `<pre class="diagram" data-lang="${l}">${md.utils.escapeHtml(code)}</pre>`;
     }
+    if (l === 'chat') {
+      // Placeholder; hydrateChats() swaps it for the chat window.
+      return `<pre class="chat-src">${md.utils.escapeHtml(code)}</pre>`;
+    }
     if (lang && hljs.getLanguage(lang)) {
       try {
         return `<pre class="hljs"><code>${hljs.highlight(code, { language: lang, ignoreIllegals: true }).value}</code></pre>`;
@@ -165,6 +169,471 @@ function hydrateDiagrams(el, theme, onUpdate) {
     }));
   }
   return Promise.all(pending).then(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Chat blocks — ```chat renders a messenger-style conversation, and a model
+// you're connected to can answer live in front of the class
+//
+// A block is a script: lines prefixed with a speaker become bubbles. An `ai:`
+// line left empty (or `ai: ?`) is a *live* turn — when the presentation reaches
+// it, the connected model writes the reply, streaming word by word. During the
+// lesson anyone can also type a new question into the block's input box.
+//
+// The whole thing degrades gracefully: with no server configured the scripted
+// messages still show, and live turns offer an "Ask" button that reports what
+// went wrong instead of silently doing nothing.
+// ---------------------------------------------------------------------------
+
+// Speaker prefixes. A line that starts with anything else continues the message
+// above it, so multi-line messages need no markup.
+const CHAT_ROLES = {
+  me: 'user', you: 'user', user: 'user', q: 'user', student: 'user',
+  class: 'user', human: 'user', teacher: 'user',
+  ai: 'ai', bot: 'ai', assistant: 'ai', a: 'ai', model: 'ai', llm: 'ai',
+};
+
+// An `ai:` turn with no text behind it is answered live by the model.
+const CHAT_LIVE_RE = /^(\?+|\.\.\.|…)?$/;
+
+const CHAT_OPTS = {
+  title: '',        // shown in the window's title bar
+  model: '',        // override the model from Chat settings
+  system: '',       // instructions: how this conversation should be answered
+  you: 'You',       // label above the human bubbles
+  bot: 'AI',        // label above the model bubbles
+  placeholder: 'Ask something…',
+  reveal: 'step',   // 'step' = one message per click, 'all' = whole thread at once
+  live: 'on',       // 'off' hides the input box (a fully scripted conversation)
+};
+
+const CHAT_FALLBACK_SYSTEM =
+  'You are answering a question live during a classroom presentation. Reply in at '
+  + 'most three short sentences, in plain language, with no preamble.';
+
+// Settings shared by every block, from the 💬 Chat settings dialog.
+const chatPrefs = { base: '', model: '', system: '' };
+
+function parseChat(src) {
+  const opts = { ...CHAT_OPTS };
+  const messages = [];
+  for (const raw of src.split('\n')) {
+    const line = raw.trimEnd();
+    if (!line.trim()) continue;
+
+    // `@key: value` lines configure the block, but only before it starts talking
+    const dir = messages.length ? null : line.match(/^@([a-zA-Z]+)\s*:\s*(.*)$/);
+    if (dir) {
+      const key = dir[1].toLowerCase();
+      const value = dir[2].trim();
+      if (key === 'instructions' || key === 'persona' || key === 'system') opts.system = value;
+      else if (key in opts) opts[key] = value;
+      continue;
+    }
+
+    const m = line.match(/^([A-Za-z]+)\s*:\s?([\s\S]*)$/);
+    const role = m && CHAT_ROLES[m[1].toLowerCase()];
+    if (role) {
+      const text = m[2].trim();
+      const live = role === 'ai' && CHAT_LIVE_RE.test(text);
+      messages.push({ role, text: live ? '' : text, live });
+      continue;
+    }
+
+    const last = messages[messages.length - 1];
+    if (!last) messages.push({ role: 'user', text: line.trim(), live: false });
+    else if (!last.live) last.text = last.text ? `${last.text}\n${line.trim()}` : line.trim();
+  }
+  return { opts, messages };
+}
+
+// Pulls the source of every ```chat fence out of raw Markdown. Used to count a
+// slide's reveal stops and to decide which conversations to mirror to the
+// projector, without rendering anything.
+function chatFencesIn(text) {
+  const out = [];
+  let fence = null;   // the exact backticks/tildes that opened the current block
+  let isChat = false; // …and whether that block is a chat (not, say, a Markdown
+  let buf = [];       //    example that merely *shows* one)
+  for (const line of text.split('\n')) {
+    if (fence) {
+      if (new RegExp(`^\\s*${fence}\\s*$`).test(line)) {
+        if (isChat) out.push(buf.join('\n'));
+        fence = null; isChat = false; buf = [];
+      } else if (isChat) buf.push(line);
+      continue;
+    }
+    const open = line.match(/^\s*(`{3,}|~{3,})\s*(\S*)/);
+    if (open) { fence = open[1]; isChat = open[2].toLowerCase() === 'chat'; buf = []; }
+  }
+  if (fence && isChat) out.push(buf.join('\n')); // unclosed: still being typed
+  return out;
+}
+
+// A block's identity is its source text, so live answers survive the preview
+// re-rendering on every keystroke. Two identical blocks are told apart by the
+// order they appear in.
+function chatKeysIn(sources) {
+  const seen = new Map();
+  return sources.map((raw) => {
+    // Normalized, because the two callers see the same block slightly
+    // differently: markdown-it hands over the fence body with its closing
+    // newline, chatFencesIn joins the lines without one. The projector only
+    // picks up a mirrored conversation if both arrive at the same key.
+    const src = raw.replace(/\r/g, '').replace(/\s+$/, '');
+    let h = 5381;
+    for (let i = 0; i < src.length; i++) h = ((h * 33) ^ src.charCodeAt(i)) >>> 0;
+    const base = h.toString(36);
+    const n = seen.get(base) || 0;
+    seen.set(base, n + 1);
+    return n ? `${base}~${n}` : base;
+  });
+}
+
+// key → { answers: Map(scriptedIndex → text), extra: [{role, text}], pending, error }
+const chatSessions = new Map();
+
+function chatSession(key) {
+  let s = chatSessions.get(key);
+  if (!s) {
+    // Editing a block changes its key, so a long writing session leaves empty
+    // sessions behind: drop those once there are enough to notice.
+    if (chatSessions.size > 400) {
+      for (const [k, v] of chatSessions) {
+        if (!v.answers.size && !v.extra.length && !v.pending) chatSessions.delete(k);
+      }
+    }
+    s = { answers: new Map(), extra: [], pending: null, error: null, reqId: null };
+    chatSessions.set(key, s);
+  }
+  return s;
+}
+
+// The thread as displayed: scripted messages (with live answers filled in)
+// followed by anything asked during the lesson.
+function chatThread(spec, session) {
+  const out = spec.messages.map((m, i) => ({
+    role: m.role,
+    text: m.live ? (session.answers.get(i) || '') : m.text,
+    live: m.live,
+    slot: `s${i}`,
+    scripted: i,
+  }));
+  session.extra.forEach((m, i) => out.push({ role: m.role, text: m.text, live: false, slot: `x${i}` }));
+  return out;
+}
+
+// ---- talking to the model ----
+
+let chatSeq = 0;
+const chatStreams = new Map(); // request id → { key, slot }
+let chatModelCache = null;     // first usable model on the server, looked up once
+
+async function resolveChatModel(spec) {
+  if (spec.opts.model) return spec.opts.model;
+  if (chatPrefs.model) return chatPrefs.model;
+  if (chatModelCache) return chatModelCache;
+  const st = await window.legilo.chatModels();
+  if (!st.ok) throw new Error(`can't reach ${st.base} (${st.error})`);
+  if (!st.models.length) throw new Error(`no models on ${st.base}`);
+  chatModelCache = st.models[0];
+  return chatModelCache;
+}
+
+// Everything said before `upto`, as an OpenAI-style message list.
+function chatHistory(spec, session, upto) {
+  const system = spec.opts.system || chatPrefs.system || CHAT_FALLBACK_SYSTEM;
+  const msgs = [{ role: 'system', content: system }];
+  for (const m of chatThread(spec, session)) {
+    if (m.slot === upto) break;
+    const text = (m.text || '').trim();
+    if (text) msgs.push({ role: m.role === 'user' ? 'user' : 'assistant', content: text });
+  }
+  return msgs;
+}
+
+async function askChat(spec, key, slot) {
+  const session = chatSession(key);
+  if (session.pending) window.legilo.chatCancel(session.reqId);
+  session.pending = slot;
+  session.error = null;
+  if (slot.startsWith('s')) session.answers.set(Number(slot.slice(1)), '');
+  repaintChats(key);
+
+  let model;
+  try {
+    model = await resolveChatModel(spec);
+  } catch (err) {
+    session.pending = null;
+    session.error = `${err.message} — check 💬 Chat settings`;
+    repaintChats(key);
+    return;
+  }
+  const id = `${key}:${slot}:${++chatSeq}`;
+  session.reqId = id;
+  chatStreams.set(id, { key, slot });
+  window.legilo.chatSend({ id, model, messages: chatHistory(spec, session, slot) });
+}
+
+function appendChatText({ key, slot }, text) {
+  const session = chatSession(key);
+  if (slot.startsWith('s')) {
+    const i = Number(slot.slice(1));
+    session.answers.set(i, (session.answers.get(i) || '') + text);
+  } else {
+    const m = session.extra[Number(slot.slice(1))];
+    if (m) m.text += text;
+  }
+}
+
+const chatPaintQueue = new Set();
+
+// Token deltas land many times a second; repaint at most once per frame.
+function scheduleChatPaint(key) {
+  if (chatPaintQueue.size === 0) {
+    requestAnimationFrame(() => {
+      for (const k of chatPaintQueue) repaintChats(k);
+      chatPaintQueue.clear();
+      pushAudienceState(); // keep the projector in step with the typing
+    });
+  }
+  chatPaintQueue.add(key);
+}
+
+function endChatStream(id, error = null) {
+  const s = chatStreams.get(id);
+  if (!s) return;
+  chatStreams.delete(id);
+  const session = chatSession(s.key);
+  if (session.reqId === id) {
+    session.pending = null;
+    session.reqId = null;
+    if (error) session.error = error;
+  }
+  scheduleChatPaint(s.key);
+}
+
+window.legilo.onChatChunk(({ id, text }) => {
+  const s = chatStreams.get(id);
+  if (!s) return;
+  appendChatText(s, text);
+  scheduleChatPaint(s.key);
+});
+window.legilo.onChatDone(({ id }) => endChatStream(id));
+window.legilo.onChatError(({ id, message }) => endChatStream(id, message));
+
+// ---- the chat window in the document ----
+
+function chatBlocksFor(key) {
+  return document.querySelectorAll(`.chat-block[data-chat-key="${key}"]`);
+}
+
+function repaintChats(key) {
+  for (const el of chatBlocksFor(key)) paintChat(el);
+}
+
+function repaintAllChats(root = document) {
+  for (const el of root.querySelectorAll('.chat-block')) paintChat(el);
+}
+
+function chatBubble(m, spec, session) {
+  const row = document.createElement('div');
+  row.className = `chat-msg chat-${m.role === 'user' ? 'you' : 'ai'}`;
+  if (m.scripted != null) row.dataset.scripted = String(m.scripted);
+
+  const name = document.createElement('div');
+  name.className = 'chat-name';
+  name.textContent = m.role === 'user' ? spec.opts.you : spec.opts.bot;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  const text = (m.text || '').trim();
+  if (text) {
+    bubble.innerHTML = md.render(text);
+  } else if (session.pending === m.slot) {
+    bubble.classList.add('thinking');
+    bubble.innerHTML = '<span class="chat-dots"><i></i><i></i><i></i></span>';
+  } else if (m.live && !AUDIENCE) {
+    const ask = document.createElement('button');
+    ask.className = 'chat-ask';
+    ask.textContent = 'Ask the model';
+    ask.addEventListener('click', (e) => {
+      e.stopPropagation();
+      askChat(spec, row.closest('.chat-block').dataset.chatKey, m.slot);
+    });
+    bubble.classList.add('waiting');
+    bubble.appendChild(ask);
+  } else {
+    bubble.classList.add('waiting');
+    bubble.innerHTML = '<span class="chat-dots"><i></i><i></i><i></i></span>';
+  }
+
+  row.append(name, bubble);
+  return row;
+}
+
+// Keeps the newest message in view, unless the reader scrolled up to re-read
+// something (then leave their position alone until they scroll back down).
+function pinChatLog(log) {
+  if (log._pinned !== false) log.scrollTop = log.scrollHeight;
+}
+
+function pinChatLogs(root) {
+  for (const log of root.querySelectorAll('.chat-log')) pinChatLog(log);
+}
+
+// Rebuilds the message list from the script plus whatever has been said live.
+// Only the log is rebuilt, so a half-typed question in the input box survives.
+function paintChat(el) {
+  const spec = el._spec;
+  const session = chatSession(el._key);
+  const log = el.querySelector('.chat-log');
+
+  log.innerHTML = '';
+  for (const m of chatThread(spec, session)) {
+    const row = chatBubble(m, spec, session);
+    // Scripted messages appear one click at a time while presenting; anything
+    // asked live is always on screen.
+    row.classList.toggle('shown', m.scripted == null || m.scripted < el._shown);
+    log.appendChild(row);
+  }
+
+  const err = el.querySelector('.chat-error');
+  err.textContent = session.error || '';
+  err.hidden = !session.error;
+
+  pinChatLog(log);
+}
+
+// Fires the live turn the presentation just reached. Only the presenter's own
+// window asks — the projector shows the answer that is mirrored to it.
+function maybeAskLive(el) {
+  if (AUDIENCE || !(presenting || dualPresenting)) return;
+  if (!el.closest('#slide, #pc-current')) return;
+  const spec = el._spec;
+  const session = chatSession(el._key);
+  const idx = el._shown - 1;
+  const m = spec.messages[idx];
+  if (!m || !m.live || session.pending) return;
+  if (session.answers.get(idx)) return; // already answered on an earlier pass
+  askChat(spec, el._key, `s${idx}`);
+}
+
+// How many scripted messages of `el` are on screen.
+function setChatShown(el, n) {
+  const clamped = Math.max(0, Math.min(el._spec.messages.length, n));
+  if (el._shown === clamped) return;
+  el._shown = clamped;
+  paintChat(el);
+  maybeAskLive(el);
+}
+
+function sendChatMessage(el) {
+  const input = el.querySelector('.chat-text');
+  const text = input.value.trim();
+  if (!text) return;
+  const session = chatSession(el._key);
+  session.extra.push({ role: 'user', text });
+  session.extra.push({ role: 'ai', text: '' });
+  input.value = '';
+  const slot = `x${session.extra.length - 1}`;
+  paintChat(el);
+  askChat(el._spec, el._key, slot);
+  pushAudienceState();
+}
+
+function buildChat(src, key) {
+  const spec = parseChat(src);
+  const el = document.createElement('div');
+  el.className = 'chat-block';
+  el.dataset.chatKey = key;
+  el.dataset.reveal = spec.opts.reveal === 'all' ? 'all' : 'step';
+  el._spec = spec;
+  el._key = key;
+  el._shown = spec.messages.length; // everywhere but a running presentation
+
+  const head = document.createElement('div');
+  head.className = 'chat-head';
+  head.textContent = spec.opts.title || 'Chat';
+
+  const log = document.createElement('div');
+  log.className = 'chat-log';
+  log.addEventListener('scroll', () => {
+    log._pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+  });
+
+  const err = document.createElement('div');
+  err.className = 'chat-error';
+  err.hidden = true;
+
+  el.append(head, log, err);
+
+  if (spec.opts.live !== 'off' && !AUDIENCE) {
+    const row = document.createElement('div');
+    row.className = 'chat-input';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'chat-text';
+    input.placeholder = spec.opts.placeholder;
+    input.spellcheck = false;
+    const send = document.createElement('button');
+    send.className = 'chat-send';
+    send.textContent = 'Send';
+    send.title = 'Ask the model (Enter)';
+    row.append(input, send);
+    el.appendChild(row);
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // typing here must not step the slide
+      if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(el); }
+      else if (e.key === 'Escape') { e.preventDefault(); input.blur(); }
+    });
+    send.addEventListener('click', (e) => { e.stopPropagation(); sendChatMessage(el); });
+  }
+
+  paintChat(el);
+  return el;
+}
+
+// Swaps every `pre.chat-src` placeholder in `el` for a live chat window.
+function hydrateChats(el) {
+  const blocks = [...el.querySelectorAll('pre.chat-src')];
+  if (!blocks.length) return;
+  const sources = blocks.map((b) => b.textContent);
+  const keys = chatKeysIn(sources);
+  blocks.forEach((block, i) => block.replaceWith(buildChat(sources[i], keys[i])));
+}
+
+// ---- mirroring live conversations to the projector ----
+
+// The transcripts of the chat blocks on `text`, small enough to push every frame.
+function chatSyncFor(text) {
+  const sources = chatFencesIn(text);
+  if (!sources.length) return null;
+  const keys = chatKeysIn(sources);
+  const out = {};
+  for (const key of keys) {
+    const s = chatSessions.get(key);
+    if (!s) continue;
+    out[key] = {
+      answers: [...s.answers],
+      extra: s.extra.map((m) => ({ role: m.role, text: m.text })),
+      pending: s.pending,
+      error: s.error,
+    };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function restoreChatSessions(state) {
+  if (!state) return;
+  for (const [key, s] of Object.entries(state)) {
+    const session = chatSession(key);
+    session.answers = new Map(s.answers || []);
+    session.extra = s.extra || [];
+    session.pending = s.pending || null;
+    session.error = s.error || null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +971,7 @@ function renderMarkdownInto(el, src, { theme = null, onUpdate = null, docDir = u
     if (resolved) img.src = resolved;
   }
   embedVideos(el, dir);
+  hydrateChats(el);
   return hydrateDiagrams(el, theme || app.theme, onUpdate);
 }
 
@@ -658,12 +1128,38 @@ function renderSlideBody(el, rawText, { revealAll = false, docDir, onUpdate = nu
   return { notes, fragCount: frags.length, done: Promise.all(jobs) };
 }
 
-// Shows fragments up to and including `step`; the rest keep their space but
-// stay faded (so revealing never reflows the slide).
+// Shows everything up to and including reveal stop `step`; the rest keeps its
+// space but stays faded (so revealing never reflows the slide).
+//
+// A slide's stops run in document order: each `. . .` fragment is one stop, and
+// inside a fragment every chat message after the first is a stop of its own, so
+// a scripted conversation plays out one bubble per click. `fragCountFor` counts
+// the same stops straight from the Markdown.
 function applyReveal(el, step) {
+  let stop = 0;
   for (const box of el.querySelectorAll('.fragment')) {
-    box.classList.toggle('shown', Number(box.dataset.frag) <= step);
+    const boxStop = stop++;
+    box.classList.toggle('shown', boxStop <= step);
+    for (const chat of box.querySelectorAll('.chat-block')) {
+      const count = chat._spec.messages.length;
+      if (chat.dataset.reveal === 'all') { setChatShown(chat, count); continue; }
+      // The first message rides along with the fragment that holds it.
+      let shown = boxStop <= step ? 1 : 0;
+      for (let i = 1; i < count; i++) if (stop + i - 1 <= step) shown = i + 1;
+      setChatShown(chat, shown);
+      stop += Math.max(0, count - 1);
+    }
   }
+}
+
+// Reveal stops contributed by the ```chat blocks in a slide's Markdown.
+function chatStepsIn(text) {
+  let steps = 0;
+  for (const src of chatFencesIn(text)) {
+    const { opts, messages } = parseChat(src);
+    if (opts.reveal !== 'all') steps += Math.max(0, messages.length - 1);
+  }
+  return steps;
 }
 
 function renderSlidesPreview() {
@@ -835,6 +1331,88 @@ document.getElementById('btn-insert').addEventListener('click', () => window.leg
 document.getElementById('btn-help').addEventListener('click', () => showGuide());
 
 // ---------------------------------------------------------------------------
+// Chat settings — which model answers in ```chat blocks, and how
+// ---------------------------------------------------------------------------
+
+const csPanel = document.getElementById('chat-settings');
+const csStatus = document.getElementById('cs-status');
+const csBase = document.getElementById('cs-base');
+const csModel = document.getElementById('cs-model');
+const csKey = document.getElementById('cs-key');
+const csSystem = document.getElementById('cs-system');
+
+async function refreshChatModels() {
+  csStatus.textContent = 'Connecting…';
+  csStatus.className = 'cs-status';
+  const st = await window.legilo.chatModels();
+  csModel.innerHTML = '';
+  if (!st.ok) {
+    csStatus.textContent = `Not reachable — ${st.error}`;
+    csStatus.className = 'cs-status bad';
+    const opt = document.createElement('option');
+    opt.value = chatPrefs.model;
+    opt.textContent = chatPrefs.model || '(no models)';
+    csModel.appendChild(opt);
+    return;
+  }
+  csStatus.textContent = `Connected — ${st.models.length} model${st.models.length === 1 ? '' : 's'}`;
+  csStatus.className = 'cs-status ok';
+  // Keep a model the user picked earlier even if it's gone from the server, so
+  // opening this dialog never silently switches their deck to another model.
+  const ids = st.models.includes(chatPrefs.model) || !chatPrefs.model
+    ? st.models : [chatPrefs.model, ...st.models];
+  for (const id of ids) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = id;
+    csModel.appendChild(opt);
+  }
+  csModel.value = chatPrefs.model || st.models[0] || '';
+  chatModelCache = st.models[0] || null;
+}
+
+function openChatSettings() {
+  if (AUDIENCE) return;
+  csPanel.hidden = false;
+  refreshChatModels();
+  csBase.focus();
+}
+
+function closeChatSettings() {
+  csPanel.hidden = true;
+  editorView.focus();
+}
+
+document.getElementById('btn-chat').addEventListener('click', openChatSettings);
+document.getElementById('cs-close').addEventListener('click', closeChatSettings);
+document.getElementById('cs-done').addEventListener('click', closeChatSettings);
+document.getElementById('cs-refresh').addEventListener('click', refreshChatModels);
+document.getElementById('cs-insert').addEventListener('click', () => {
+  closeChatSettings();
+  doInsert('chat');
+});
+
+csBase.addEventListener('change', () => {
+  chatPrefs.base = csBase.value.trim();
+  chatModelCache = null;
+  window.legilo.setPref('chatBaseUrl', chatPrefs.base);
+  refreshChatModels();
+});
+csKey.addEventListener('change', () => window.legilo.setPref('chatApiKey', csKey.value));
+csModel.addEventListener('change', () => {
+  chatPrefs.model = csModel.value;
+  window.legilo.setPref('chatModel', chatPrefs.model);
+});
+csSystem.addEventListener('change', () => {
+  chatPrefs.system = csSystem.value.trim();
+  window.legilo.setPref('chatSystem', chatPrefs.system);
+});
+csPanel.addEventListener('click', (e) => { if (e.target === csPanel) closeChatSettings(); });
+document.addEventListener('keydown', (e) => {
+  if (!csPanel.hidden && e.key === 'Escape') { e.preventDefault(); closeChatSettings(); }
+}, true);
+
+// ---------------------------------------------------------------------------
 // Draggable divider
 // ---------------------------------------------------------------------------
 
@@ -914,7 +1492,9 @@ function currentDocDir() {
 
 function fragCountFor(idx) {
   const s = slides[idx];
-  return s ? splitFragments(extractNotes(s.text).text).length : 1;
+  if (!s) return 1;
+  const text = extractNotes(s.text).text;
+  return splitFragments(text).length + chatStepsIn(text);
 }
 
 // Renders the current slide into the fullscreen `#slide` stage (solo present,
@@ -935,6 +1515,7 @@ function fitAndReveal() {
   // the layout is stable no matter how far the reveal has progressed.
   const scale = fitContent(slideEl, slideStage.clientHeight - 96, SLIDE_BASE_FONT);
   applyReveal(slideEl, revealSteps.get(slideIndex) || 0);
+  pinChatLogs(slideEl); // measurable only once the slide has been laid out
   if (scale < 1 && !AUDIENCE) {
     warn.textContent = `⚠ Text scaled to ${Math.round(scale * 100)}% to fit — consider splitting this slide with ---`;
     warn.hidden = false;
@@ -1178,16 +1759,27 @@ function pushAudienceState() {
       spotlight,
       spotlightPos,
       strokes: ink.strokes.get(slideIndex) || [],
+      chats: chatSyncFor(slides[slideIndex]?.text ?? ''),
     });
   });
 }
 
 // ---- audience window: render state pushed from the editor ----
 
+// A live conversation streams in a token at a time, so re-rendering the whole
+// slide on every push would be wasteful (and would drop the chat's scroll
+// position). When only the transcript moved, repaint the bubbles instead.
+let audienceLook = null;
+
 function applyAudienceState(s) {
+  const look = [s.slideText, s.theme, s.previewStyle, s.customCss, s.docDir].join('\0');
+  const sameSlide = look === audienceLook;
+  audienceLook = look;
+
   if (s.theme && s.theme !== app.theme) setThemeClasses(s.theme);
   if (s.previewStyle && s.previewStyle !== app.previewStyle) setStyleClasses(s.previewStyle);
   injectCustomCss(s.customCss || '');
+  restoreChatSessions(s.chats);
   audienceDocDir = s.docDir || null;
   audienceProgress = { idx: s.slideIndex, count: s.slideCount };
   slides = [{ text: s.slideText || '', startLine: 0 }];
@@ -1203,7 +1795,8 @@ function applyAudienceState(s) {
   presenterEl.hidden = false;
   applyBlackout();
   applySpotlight();
-  renderSlide();
+  if (sameSlide) { repaintAllChats(slideEl); fitAndReveal(); }
+  else renderSlide();
   fitSlide();
   redrawInk();
 }
@@ -1217,6 +1810,7 @@ document.addEventListener('fullscreenchange', () => {
 
 document.addEventListener('keydown', (e) => {
   if (AUDIENCE) return; // the projector is display-only
+  if (e.target?.closest?.('.chat-input')) return; // typing a question into a chat block
   // Dual-present console: the editor may hold focus, so only remap keys that
   // aren't ordinary typing unless the editor is unfocused.
   if (dualPresenting && !annotating) {
@@ -1290,6 +1884,7 @@ presenterEl.addEventListener('click', (e) => {
   if (AUDIENCE) return;
   if (e.target.closest('#presenter-hud')) return;
   if (e.target.closest('a, .video-embed')) return; // interact, don't navigate
+  if (e.target.closest('.chat-input, .chat-ask')) return; // asking, not advancing
   if (inkConsumesClick()) return; // drawing, not navigating
   if (e.clientX < window.innerWidth / 5) retreat();
   else advance();
@@ -1615,10 +2210,28 @@ function docTitle() {
 // Standalone light-theme HTML of the current document; used for HTML export,
 // PDF export, and printing. Renders via the DOM so relative image paths get
 // resolved the same way as in the preview.
+// A chat block's live controls mean nothing on paper or in an exported file:
+// keep the conversation as it stands, drop the input box, and drop any turn the
+// model never got round to answering.
+function freezeChats(el) {
+  for (const row of el.querySelectorAll('.chat-input')) row.remove();
+  for (const bubble of el.querySelectorAll('.chat-bubble.waiting, .chat-bubble.thinking')) {
+    bubble.closest('.chat-msg')?.remove();
+  }
+  for (const msg of el.querySelectorAll('.chat-msg')) msg.classList.add('shown');
+  for (const log of el.querySelectorAll('.chat-log')) log.style.maxHeight = 'none';
+}
+
+async function renderForExport(el, src, opts) {
+  const done = renderMarkdownInto(el, src, opts);
+  freezeChats(el);
+  return done;
+}
+
 async function buildStandaloneHtml() {
   const scratch = document.createElement('div');
   // Exports are always light-theme; wait for diagrams so the SVGs are inlined.
-  await renderMarkdownInto(scratch, getContent(), { theme: 'light' });
+  await renderForExport(scratch, getContent(), { theme: 'light' });
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1647,7 +2260,7 @@ async function exportToHtml() {
 // window is unreliable on Windows — the dialog never appears.)
 async function printDocument() {
   const printRoot = document.getElementById('print-root');
-  await renderMarkdownInto(printRoot, getContent(), { theme: 'light' });
+  await renderForExport(printRoot, getContent(), { theme: 'light' });
   const wasDark = document.body.classList.contains('theme-dark');
   if (wasDark) {
     document.body.classList.replace('theme-dark', 'theme-light');
@@ -1666,7 +2279,7 @@ function officeExportCtx() {
     app,
     getContent,
     docTitle,
-    render: renderMarkdownInto,
+    render: renderForExport,
     splitSlides,
     fitContent,
     paperSizes: PAPER_SIZES,
@@ -1781,6 +2394,16 @@ async function doInsert(kind) {
     case 'd2': {
       const body = 'user: User\napp: Legilo\nuser -> app: writes markdown\napp -> user: renders preview';
       return insertSnippet(`${pre}\`\`\`d2\n${body}\n\`\`\`\n`, 0, 0);
+    }
+    case 'chat': {
+      const body = '@title: Ask the AI\n'
+        + '@system: You are a friendly biology tutor for grade 8. Answer in two short sentences.\n'
+        + '\n'
+        + 'me: What is photosynthesis?\n'
+        + 'ai: Plants use sunlight, water and CO2 to make sugar, and give off oxygen.\n'
+        + 'me: Why are leaves green?\n'
+        + 'ai: ?';
+      return insertSnippet(`${pre}\`\`\`chat\n${body}\n\`\`\`\n`, 0, 0);
     }
     case 'video': {
       const url = 'https://youtu.be/VIDEO_ID';
@@ -2015,6 +2638,62 @@ While presenting you can **draw on the slides**: a digital pen just works
 
 ---
 
+## Live chat
+
+A \`chat\` code block becomes a chat window: a conversation you walk through in
+front of the class, one message per click — and the last word can come from an
+AI model you're connected to, answering there and then.
+
+\`\`\`chat
+@title: Biology helpdesk
+@system: You are a friendly tutor. Answer in two short sentences.
+
+me: What is photosynthesis?
+ai: Plants use sunlight, water and CO2 to make sugar, and give off oxygen.
+me: Why are leaves green?
+ai: ?
+\`\`\`
+
+That window is written like this (it's in the Insert menu too):
+
+\`\`\`\`
+\`\`\`chat
+@title: Biology helpdesk
+@system: You are a friendly tutor. Answer in two short sentences.
+
+me: What is photosynthesis?
+ai: Plants use sunlight, water and CO2 to make sugar, and give off oxygen.
+me: Why are leaves green?
+ai: ?
+\`\`\`
+\`\`\`\`
+
+- \`me:\` is you (or \`you:\`, \`student:\`, \`q:\`) and \`ai:\` is the model
+  (or \`bot:\`, \`assistant:\`). A line without a name carries on the message
+  above it.
+- An \`ai:\` line with **nothing behind it** — or \`ai: ?\` — is answered live:
+  while presenting it fills itself in when the conversation reaches it, and in
+  the preview you click **Ask the model**.
+- The box at the bottom takes a question your class just thought of; the answer
+  streams in as a new bubble, on your screen and the projector at once.
+
+**Tell it how to answer.** \`@system:\` sets the instructions for that one
+conversation ("a friendly tutor", "a sceptical historian", "reply in Dutch, one
+sentence"). The **💬** button in the toolbar sets the default instructions for
+every block, plus the server and model.
+
+Other settings: \`@title:\` names the window, \`@you:\` and \`@bot:\` name the
+speakers, \`@reveal: all\` shows the whole thread at once, and \`@live: off\`
+hides the input box for a fully scripted conversation.
+
+**Connecting a model.** Anything that speaks the OpenAI API works: Ollama on
+this computer (\`http://localhost:11434/v1\`), a machine on your Tailscale
+network (\`http://your-machine:11434/v1\`), LM Studio, or a cloud endpoint with
+an API key. Without a server the scripted conversation still shows — only the
+live answers are missing.
+
+---
+
 ## Looks
 
 **View → Preview Style** restyles the preview (and every export):
@@ -2085,6 +2764,13 @@ async function init() {
   }
   applyPreviewMode(prefs.previewMode || 'flow');
   autoSaveEnabled = prefs.autoSave !== false;
+
+  chatPrefs.base = prefs.chatBaseUrl || '';
+  chatPrefs.model = prefs.chatModel || '';
+  chatPrefs.system = prefs.chatSystem || '';
+  csBase.value = chatPrefs.base;
+  csKey.value = prefs.chatApiKey || '';
+  csSystem.value = chatPrefs.system;
 
   const recovery = await window.legilo.getRecovery();
   if (recovery?.tabs?.length) {
