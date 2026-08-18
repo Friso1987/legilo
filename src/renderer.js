@@ -2158,6 +2158,35 @@ async function saveDocument({ saveAs = false } = {}) {
   return true;
 }
 
+// Help > About: version and how this copy was launched. When "Open with" goes
+// wrong, this is the one screen that says whether the running build even has
+// the fix, and what Windows actually passed along.
+async function showAbout() {
+  const a = await window.legilo.about();
+  const lines = [
+    `# Legilo ${a.version}`,
+    '',
+    `- Electron ${a.electron}, Chromium ${a.chrome}`,
+    `- ${a.platform}, ${a.packaged ? 'installed build' : 'running from source'}`,
+    `- Program: \`${a.exe}\``,
+    '',
+    '## Started with',
+    '',
+    a.launchArgs.length
+      ? a.launchArgs.map((x) => `- \`${x}\``).join('\n')
+      : '- (no arguments: launched without a document)',
+    '',
+    a.openedFromLaunch.length
+      ? `Legilo recognised ${a.openedFromLaunch.length} document to open.`
+      : 'No document was recognised in those arguments.',
+    '',
+    'Opening a file from Explorer or Finder should list it above. If it says',
+    'no arguments while you did use "Open with", Windows started a different',
+    'copy of Legilo than the one you installed.',
+  ];
+  newTab({ content: lines.join('\n'), label: 'About Legilo' });
+}
+
 // Documents the OS handed to Legilo: a double-click in the file manager, an
 // "Open with", or a second launch while Legilo is already running.
 async function openFromOs(paths) {
@@ -2448,6 +2477,7 @@ async function doInsert(kind) {
 window.legilo.onMenu(async (action) => {
   if (action.startsWith('insert:')) return doInsert(action.slice(7));
   switch (action) {
+    case 'about': return showAbout();
     case 'print': return printDocument();
     case 'print-preview': return window.legilo.printPreview(await buildStandaloneHtml(), app.paperSize);
     case 'export-pdf': return window.legilo.exportPdf(await buildStandaloneHtml(), `${docTitle()}.pdf`, app.paperSize);
@@ -2786,6 +2816,10 @@ async function init() {
   csKey.value = prefs.chatApiKey || '';
   csSystem.value = chatPrefs.system;
 
+  // Claim anything the OS handed us before restoring tabs: whatever happens
+  // below, the document someone double-clicked still gets opened.
+  const osOpens = await window.legilo.takePendingOpens();
+
   const recovery = await window.legilo.getRecovery();
   if (recovery?.tabs?.length) {
     // Unclean shutdown last time: bring every tab back exactly as it was,
@@ -2818,6 +2852,8 @@ async function init() {
   // Guide in front on launch — Help → "Show Guide on Startup" turns this off,
   // but always show it when there would otherwise be no tab at all.
   if (prefs.showGuideOnStartup !== false || tabs.length === 0) showGuide();
+
+  if (osOpens.length) await openFromOs(osOpens);
   editorView.focus();
   persistRecovery(); // start a fresh recovery snapshot for this session
 

@@ -26,6 +26,7 @@ let allowClose = false;
 
 let pendingOpens = [];
 let rendererReady = false;
+const launchArgs = process.argv.slice(1); // shown in Help > About, for support
 
 const DOC_EXT = /\.(md|markdown|mdown|mkd|txt)$/i;
 
@@ -60,12 +61,36 @@ function flushOpens() {
   win.focus();
 }
 
-// The renderer pings this once it has restored its tabs, so a document opened
-// from the OS is never overwritten by the session being restored on top of it.
+// The renderer collects whatever queued while it was starting up. Pulling
+// rather than waiting to be pushed means a document still opens even if the
+// ready ping never arrives.
+ipcMain.handle('file:take-pending-opens', () => {
+  const paths = pendingOpens;
+  pendingOpens = [];
+  return paths;
+});
+
+// From here on the window is live, so later arrivals can be pushed straight in.
 ipcMain.on('app:renderer-ready', () => {
   rendererReady = true;
   flushOpens();
 });
+
+// Everything support needs to answer "which build is this, and what did Windows
+// hand it?" without asking someone to dig through a terminal.
+ipcMain.handle('app:about', () => ({
+  // Read from package.json rather than app.getVersion(): the latter reports
+  // Electron's own version when Legilo is started from a script in dev, which
+  // is the one number this screen must never get wrong.
+  version: require('./package.json').version || app.getVersion(),
+  electron: process.versions.electron,
+  chrome: process.versions.chrome,
+  platform: `${process.platform} ${process.arch}`,
+  exe: process.execPath,
+  packaged: app.isPackaged,
+  launchArgs,
+  openedFromLaunch: docPathsIn(process.argv, process.cwd()),
+}));
 
 function createWindow() {
   const bounds = store.get('windowBounds');
@@ -314,6 +339,7 @@ function buildMenu() {
       label: 'Help',
       submenu: [
         { label: 'Markdown Guide', click: () => sendMenu('show-guide') },
+        { label: 'About Legilo', click: () => sendMenu('about') },
         { type: 'separator' },
         {
           type: 'checkbox',

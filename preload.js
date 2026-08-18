@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('legilo', {
   onAudienceState: (cb) => ipcRenderer.on('audience:state', (_e, state) => cb(state)),
   onOpenPaths: (cb) => ipcRenderer.on('file:open-paths', (_e, paths) => cb(paths)),
   rendererReady: () => ipcRenderer.send('app:renderer-ready'),
+  takePendingOpens: () => ipcRenderer.invoke('file:take-pending-opens'),
+  about: () => ipcRenderer.invoke('app:about'),
 
   // dual-view presenting
   openAudience: () => ipcRenderer.invoke('presenter:open-audience'),
