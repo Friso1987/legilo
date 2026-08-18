@@ -98,9 +98,9 @@ your next click, and then fades in.
 
 ### Chat with an AI, live on the slide
 
-A `chat` block turns into a chat window on your slide — the conversation
-appears one message per click, like a messenger app, and the model you're
-connected to writes the answers there and then.
+A `chat` block turns into a chat window on your slide. The conversation appears
+one message per click, like a messenger app, and the model you're connected to
+writes the answers there and then.
 
 ````markdown
 ```chat
@@ -116,15 +116,15 @@ ai: ?
 
 `me:` is you, `ai:` is the model. An `ai:` line left empty (or `ai: ?`) is
 answered live while you present, and the box at the bottom of the window takes
-whatever your class asks next — the reply streams onto your screen and the
-projector at the same time.
+whatever your class asks next, with the reply streaming onto your screen and
+the projector at the same time.
 
 You decide how it answers: `@system:` sets the instructions for one
 conversation ("a sceptical historian", "reply in Dutch, one sentence"), and the
 **💬** button in the toolbar sets the default instructions, the server and the
 model for every block.
 
-Any server that speaks the OpenAI API works — Ollama on your own machine, a
+Any server that speaks the OpenAI API works: Ollama on your own machine, a
 computer on your Tailscale network, LM Studio, or a cloud endpoint with an API
 key. Nothing is sent anywhere until a live turn actually runs, and without a
 server the scripted conversation still plays as written.
@@ -159,6 +159,102 @@ and never reach the projector.
 <div align="center">
 <img src="docs/screenshot-presenter.png" width="850" alt="Presenter mode: fullscreen slide with auto-fit warning" />
 </div>
+
+## 🤖 Have an AI write the first draft
+
+Legilo reads ordinary Markdown, but the parts that make a lesson work (slides,
+step-by-step reveals, speaker notes, live chat blocks) are Legilo's own. An
+assistant that doesn't know them hands you back something that looks fine and
+presents badly.
+
+So give it the rules first. Paste the instruction below into Claude, ChatGPT or
+any other assistant, add what your lesson is about, and the Markdown that comes
+back goes straight into a Legilo tab: press **F5** and you're teaching. Ask in
+whatever language you like; the answer follows your language.
+
+`````text
+You are writing a lesson document for Legilo, a Markdown editor teachers use to
+present. Reply with the finished Markdown only: no explanation before or after
+it, and never wrap the whole answer in a code fence.
+
+Legilo reads normal Markdown (headings, lists, tables, task lists, footnotes,
+links, images, and $math$), plus rules of its own:
+
+SLIDES
+- A line containing only `---` starts a new slide.
+- Always leave one blank line before that `---`. Without it, the line above
+  turns into a heading instead of starting a slide.
+- Open with a title slide, then keep each slide to a short heading and about
+  six bullets. Legilo shrinks a slide that doesn't fit and warns about it, so
+  split it instead of cramming.
+
+REVEAL ONE POINT AT A TIME
+- A line containing only `. . .` (three dots separated by spaces) is a pause:
+  everything after it stays hidden until the teacher's next click. Use it where
+  a point should land before the next one appears.
+
+NOTES ONLY THE TEACHER SEES
+- `<!-- note: ... -->` is a speaker note. It shows on the teacher's console and
+  never reaches the projector. Add one per slide: what to say, what to ask, how
+  long to spend.
+
+LIVE CHAT WITH A MODEL
+- A ```chat fenced block becomes a chat window on the slide, revealed one
+  message per click. Lines starting with `me:` are the class, lines starting
+  with `ai:` are the model.
+- An `ai:` line with nothing behind it, or `ai: ?`, is answered live during the
+  lesson by the model the teacher is connected to. Use it for the question
+  worth asking in front of the class.
+- Settings go on `@key: value` lines at the top of the block: `@title:` names
+  the window, `@system:` tells the model how to answer (for example "a friendly
+  tutor, two short sentences"), `@you:` and `@bot:` name the speakers.
+- Never put a `. . .` line inside a chat block.
+
+DIAGRAMS AND MEDIA
+- ```mermaid and ```d2 fenced blocks render as diagrams. Prefer a small diagram
+  over a long explanation.
+- A bare YouTube or Vimeo URL alone on its own line becomes an embedded player.
+
+HANDOUTS
+- The same file is printed and exported afterwards, so keep it readable as a
+  document, not just as slides.
+- `\pagebreak` alone on a line forces a page break when printing or exporting.
+
+Use Markdown headings, never raw HTML. Write in the language of my request.
+
+Here is the lesson I need: [topic, level or age group, how long the lesson is,
+language, and anything that has to be in it]
+`````
+
+What comes back looks like this, and is ready to present as it stands:
+
+````markdown
+# Photosynthesis
+
+<!-- note: ask who has watered a plant this week, keep this slide under a minute -->
+
+---
+
+## What plants need
+
+- Light
+- Water
+- CO₂
+
+. . .
+
+> And what do they make out of it?
+
+---
+
+```chat
+@title: Ask the AI
+@system: You are a friendly biology tutor. Answer in two short sentences.
+
+me: Why are leaves green?
+ai: ?
+```
+````
 
 ## 📄 Hand it out
 
