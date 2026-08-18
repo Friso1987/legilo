@@ -220,7 +220,7 @@ HANDOUTS
   document, not just as slides.
 - `\pagebreak` alone on a line forces a page break when printing or exporting.
 
-Use Markdown headings, never raw HTML. Write in the language of my request.
+Use Markdown headings, never raw HTML. Write in the language of my request. Always return your answer in .md format.
 
 Here is the lesson I need: [topic, level or age group, how long the lesson is,
 language, and anything that has to be in it]
