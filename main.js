@@ -16,6 +16,57 @@ let win = null;
 let audienceWin = null;
 let allowClose = false;
 
+// ---------- opening a file the OS handed us ----------
+//
+// Legilo registers itself for .md, so it gets launched with a path when someone
+// double-clicks a document or picks "Open with". Paths arrive three ways: in
+// argv on a cold start, in the second instance's argv when Legilo is already
+// running (Windows/Linux), and through the open-file event (macOS). They queue
+// here until the renderer says it's ready for them.
+
+let pendingOpens = [];
+let rendererReady = false;
+
+const DOC_EXT = /\.(md|markdown|mdown|mkd|txt)$/i;
+
+// argv holds the executable, sometimes a script path, Chromium's own switches,
+// and (when the OS is handing us a document) the file. Rather than guessing how
+// many leading entries to drop — which differs between a packaged app, a dev
+// run, and a relaunch — keep whatever actually names a document on disk.
+function docPathsIn(argv, cwd) {
+  const out = [];
+  for (const arg of argv) {
+    if (!arg || arg.startsWith('-')) continue;
+    const full = path.resolve(cwd || process.cwd(), arg);
+    try {
+      if (DOC_EXT.test(full) && require('fs').statSync(full).isFile()) out.push(full);
+    } catch (_) { /* not a path we can open */ }
+  }
+  return out;
+}
+
+function queueOpen(paths) {
+  if (!paths.length) return;
+  pendingOpens.push(...paths);
+  flushOpens();
+}
+
+function flushOpens() {
+  if (!rendererReady || !win || win.isDestroyed() || !pendingOpens.length) return;
+  const paths = pendingOpens;
+  pendingOpens = [];
+  win.webContents.send('file:open-paths', paths);
+  if (win.isMinimized()) win.restore();
+  win.focus();
+}
+
+// The renderer pings this once it has restored its tabs, so a document opened
+// from the OS is never overwritten by the session being restored on top of it.
+ipcMain.on('app:renderer-ready', () => {
+  rendererReady = true;
+  flushOpens();
+});
+
 function createWindow() {
   const bounds = store.get('windowBounds');
 
@@ -60,6 +111,7 @@ function createWindow() {
 
   win.on('closed', () => {
     win = null;
+    rendererReady = false;
     closeAudienceWindow();
   });
 
@@ -713,6 +765,20 @@ ipcMain.on('presenter:sync', (_e, state) => {
 
 // ---------- lifecycle ----------
 
+// A second launch (double-clicking another document) must hand its file to the
+// window that is already open instead of starting a rival copy of the app.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv, cwd) => queueOpen(docPathsIn(argv, cwd)));
+}
+
+// macOS delivers documents this way, and can do so before the app is ready.
+app.on('open-file', (e, filePath) => {
+  e.preventDefault();
+  queueOpen([filePath]);
+});
+
 app.whenReady().then(() => {
   // YouTube's embedded player refuses to play without a Referer header
   // (error 153), and a file://-loaded page sends none — add one for the
@@ -727,6 +793,7 @@ app.whenReady().then(() => {
 
   buildMenu();
   createWindow();
+  queueOpen(docPathsIn(process.argv, process.cwd()));
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

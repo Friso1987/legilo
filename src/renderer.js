@@ -2158,6 +2158,20 @@ async function saveDocument({ saveAs = false } = {}) {
   return true;
 }
 
+// Documents the OS handed to Legilo: a double-click in the file manager, an
+// "Open with", or a second launch while Legilo is already running.
+async function openFromOs(paths) {
+  for (const filePath of paths) {
+    const content = await window.legilo.readFile(filePath);
+    if (content === null) continue; // vanished or unreadable; skip quietly
+    if (/\.html?$/i.test(filePath)) importHtml(filePath, content);
+    else openPath(filePath, content);
+  }
+  renderTabBar();
+  updateTitle();
+  editorView.focus();
+}
+
 async function openDocument() {
   const result = await window.legilo.openFile();
   if (!result) return;
@@ -2806,6 +2820,11 @@ async function init() {
   if (prefs.showGuideOnStartup !== false || tabs.length === 0) showGuide();
   editorView.focus();
   persistRecovery(); // start a fresh recovery snapshot for this session
+
+  // Only now is it safe for a document opened from the OS to land: any restored
+  // session is already in place, so it opens beside that work, not under it.
+  window.legilo.onOpenPaths(openFromOs);
+  window.legilo.rendererReady();
 }
 
 // The projector window runs no editor — it only mirrors pushed slide state.
